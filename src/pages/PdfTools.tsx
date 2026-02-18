@@ -13,6 +13,8 @@ import {
   RotateCw,
   Trash2,
   Stamp,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { ToolLayout } from "../components/Layout";
 import { FileUpload } from "../components/Shared";
@@ -119,10 +121,12 @@ const SortableFileItem: React.FC<{
         {file.type.replace("image/", "").toUpperCase()}
       </p>
       <button
+        type="button"
         onClick={() => onRemove(idx)}
-        className="absolute top-2 right-2 p-1 bg-white rounded-full shadow hover:bg-red-50 text-red-500"
+        className="absolute top-2 right-2 p-2 bg-white rounded-full shadow hover:bg-red-50 text-red-500 transition-all active:scale-95"
+        title="Remove file"
       >
-        <X size={14} />
+        <X size={16} />
       </button>
     </div>
   );
@@ -132,6 +136,7 @@ const SortableFileItem: React.FC<{
 export const MergePdfTool = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [processing, setProcessing] = useState(false);
+  const [progressValue, setProgressValue] = useState<number | undefined>(undefined);
 
   // dnd-kit 센서 설정
   const sensors = useSensors(
@@ -158,8 +163,13 @@ export const MergePdfTool = () => {
   const handleMerge = async () => {
     if (files.length < 2) return alert("Please select at least 2 files.");
     setProcessing(true);
+    setProgressValue(0);
     try {
-      const mergedPdfBytes = await pdfUtils.mergePdfs(files);
+      const mergedPdfBytes = await pdfUtils.mergePdfs(files, (current, total, message) => {
+        const percent = Math.round((current / total) * 100);
+        setProgressValue(percent);
+        console.log(`Merge progress: ${percent}% - ${message}`);
+      });
       const blob = uint8ArrayToBlob(mergedPdfBytes);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -171,11 +181,18 @@ export const MergePdfTool = () => {
       alert("Error merging files");
     } finally {
       setProcessing(false);
+      setProgressValue(undefined);
     }
   };
 
   return (
-    <ToolLayout title="Merge Files" isProcessing={processing}>
+    <ToolLayout 
+      title="Merge Files" 
+      isProcessing={processing}
+      progressValue={progressValue}
+      progressLabel="Merging Documents..."
+      progressSubLabel={`Combining ${files.length} files into a single PDF`}
+    >
       {files.length === 0 ? (
         <div className="text-center">
           <FileUpload
@@ -218,10 +235,11 @@ export const MergePdfTool = () => {
                   />
                 ))}
                 <div className="border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center min-h-[120px] hover:bg-gray-50 cursor-pointer">
-                  <label className="cursor-pointer flex flex-col items-center">
+                  <label htmlFor="merge-files-input" className="cursor-pointer flex flex-col items-center">
                     <Plus size={24} className="text-gray-400" />
                     <span className="text-xs text-gray-500 mt-1">Add more</span>
                     <input
+                      id="merge-files-input"
                       type="file"
                       multiple
                       accept=".pdf,image/*"
@@ -238,14 +256,16 @@ export const MergePdfTool = () => {
           </DndContext>
           <div className="flex justify-end gap-4">
             <button
+              type="button"
               onClick={() => setFiles([])}
-              className="px-6 py-3 text-gray-600 font-medium hover:bg-gray-100 rounded-xl transition-colors"
+              className="px-6 py-4 text-gray-600 font-medium hover:bg-gray-100 rounded-xl transition-colors min-w-[120px]"
             >
               Reset
             </button>
             <button
+              type="button"
               onClick={handleMerge}
-              className="px-8 py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-lg shadow-brand-200 transition-all transform hover:-translate-y-0.5"
+              className="px-8 py-4 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-lg shadow-brand-200 transition-all transform hover:-translate-y-0.5 min-w-[200px]"
             >
               Merge Files
             </button>
@@ -285,7 +305,12 @@ export const SplitPdfTool = () => {
   };
 
   return (
-    <ToolLayout title="Split PDF" isProcessing={processing}>
+    <ToolLayout 
+      title="Split PDF" 
+      isProcessing={processing}
+      progressLabel="Splitting PDF..."
+      progressSubLabel={`Applying ${mode} mode to ${file ? 1 : 0} file`}
+    >
       {!file ? (
         <FileUpload
           onFilesSelected={(files) => setFile(files[0])}
@@ -304,6 +329,7 @@ export const SplitPdfTool = () => {
               </p>
             </div>
             <button
+              type="button"
               onClick={() => setFile(null)}
               className="text-gray-400 hover:text-gray-600"
             >
@@ -314,6 +340,7 @@ export const SplitPdfTool = () => {
           <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm mb-8">
             <div className="flex gap-4 mb-6">
               <button
+                type="button"
                 onClick={() => setMode("range")}
                 className={`flex-1 py-3 rounded-xl font-medium border-2 transition-all ${
                   mode === "range"
@@ -324,6 +351,7 @@ export const SplitPdfTool = () => {
                 Extract Pages
               </button>
               <button
+                type="button"
                 onClick={() => setMode("count")}
                 className={`flex-1 py-3 rounded-xl font-medium border-2 transition-all ${
                   mode === "count"
@@ -336,12 +364,13 @@ export const SplitPdfTool = () => {
             </div>
 
             <div className="mb-6">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
+              <label htmlFor="split-value-input" className="block text-sm font-semibold text-gray-700 mb-2">
                 {mode === "range"
                   ? "Page Range (e.g. 1-5)"
                   : "Number of Parts (e.g. 2, 4, 10)"}
               </label>
               <input
+                id="split-value-input"
                 type="text"
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
@@ -356,8 +385,9 @@ export const SplitPdfTool = () => {
             </div>
 
             <button
+              type="button"
               onClick={handleSplit}
-              className="w-full py-4 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-lg shadow-brand-200 transition-all"
+              className="w-full py-5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-lg shadow-brand-200 transition-all text-lg"
             >
               Split PDF
             </button>
@@ -389,7 +419,12 @@ export const PdfToImgTool = () => {
   };
 
   return (
-    <ToolLayout title="PDF to JPG" isProcessing={processing}>
+    <ToolLayout 
+      title="PDF to JPG" 
+      isProcessing={processing}
+      progressLabel="Converting PDF to Images..."
+      progressSubLabel={`Rasterizing ${file ? 1 : 0} document into page images`}
+    >
       {!file ? (
         <FileUpload
           onFilesSelected={(files) => setFile(files[0])}
@@ -400,8 +435,9 @@ export const PdfToImgTool = () => {
           <FileText size={64} className="text-amber-500 mb-4" />
           <h3 className="text-xl font-bold text-gray-900 mb-6">{file.name}</h3>
           <button
+            type="button"
             onClick={handleConvert}
-            className="px-8 py-3 bg-brand-600 text-white font-bold rounded-xl"
+            className="px-8 py-4 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5 text-lg"
           >
             Convert to Images
           </button>
@@ -476,10 +512,12 @@ const SortableImageItem: React.FC<{
         alt="preview"
       />
       <button
+        type="button"
         onClick={() => onRemove(idx)}
-        className="absolute top-2 right-2 p-1 bg-white/90 backdrop-blur rounded-full shadow hover:bg-red-50 text-red-500 z-10"
+        className="absolute top-2 right-2 p-2 bg-white/90 backdrop-blur rounded-full shadow hover:bg-red-50 text-red-500 z-10 transition-all active:scale-95"
+        title="Remove image"
       >
-        <X size={14} />
+        <X size={16} />
       </button>
     </div>
   );
@@ -489,6 +527,7 @@ const SortableImageItem: React.FC<{
 export const ImgToPdfTool = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [processing, setProcessing] = useState(false);
+  const [progressValue, setProgressValue] = useState<number | undefined>(undefined);
 
   // dnd-kit 센서 설정
   const sensors = useSensors(
@@ -515,8 +554,13 @@ export const ImgToPdfTool = () => {
   const handleConvert = async () => {
     if (files.length === 0) return;
     setProcessing(true);
+    setProgressValue(0);
     try {
-      const pdfBytes = await pdfUtils.imagesToPdf(files);
+      const pdfBytes = await pdfUtils.imagesToPdf(files, (current, total, message) => {
+        const percent = Math.round((current / total) * 100);
+        setProgressValue(percent);
+        console.log(`Image to PDF progress: ${percent}% - ${message}`);
+      });
       const blob = uint8ArrayToBlob(pdfBytes);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -528,11 +572,18 @@ export const ImgToPdfTool = () => {
       alert("Conversion failed.");
     } finally {
       setProcessing(false);
+      setProgressValue(undefined);
     }
   };
 
   return (
-    <ToolLayout title="JPG to PDF" isProcessing={processing}>
+    <ToolLayout 
+      title="JPG to PDF" 
+      isProcessing={processing}
+      progressValue={progressValue}
+      progressLabel="Converting Images to PDF..."
+      progressSubLabel={`Processing ${files.length} images`}
+    >
       {files.length === 0 ? (
         <div className="text-center">
           <FileUpload onFilesSelected={setFiles} accept="image/*" multiple />
@@ -570,9 +621,10 @@ export const ImgToPdfTool = () => {
                   />
                 ))}
                 <div className="border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center aspect-square hover:bg-gray-50 cursor-pointer">
-                  <label className="cursor-pointer flex flex-col items-center">
+                  <label htmlFor="add-images-input" className="cursor-pointer flex flex-col items-center">
                     <Plus size={24} className="text-gray-400" />
                     <input
+                      id="add-images-input"
                       type="file"
                       multiple
                       accept="image/*"
@@ -589,14 +641,16 @@ export const ImgToPdfTool = () => {
           </DndContext>
           <div className="flex justify-end gap-4 mt-auto">
             <button
+              type="button"
               onClick={() => setFiles([])}
-              className="px-6 py-3 text-gray-600 font-medium hover:bg-gray-100 rounded-xl transition-colors"
+              className="px-6 py-4 text-gray-600 font-medium hover:bg-gray-100 rounded-xl transition-colors min-w-[120px]"
             >
               Reset
             </button>
             <button
+              type="button"
               onClick={handleConvert}
-              className="px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 transition-all"
+              className="px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 transition-all transform hover:-translate-y-0.5 min-w-[200px]"
             >
               Convert to PDF
             </button>
@@ -632,7 +686,12 @@ export const PageNumberTool = () => {
   };
 
   return (
-    <ToolLayout title="Add Page Numbers" isProcessing={processing}>
+    <ToolLayout 
+      title="Add Page Numbers" 
+      isProcessing={processing}
+      progressLabel="Adding Page Numbers..."
+      progressSubLabel={`Updating ${file ? 1 : 0} PDF with numbered footer`}
+    >
       {!file ? (
         <FileUpload
           onFilesSelected={(files) => setFile(files[0])}
@@ -648,6 +707,7 @@ export const PageNumberTool = () => {
               <h3 className="font-bold text-gray-900">{file.name}</h3>
             </div>
             <button
+              type="button"
               onClick={() => setFile(null)}
               className="text-gray-400 hover:text-gray-600"
             >
@@ -659,8 +719,9 @@ export const PageNumberTool = () => {
             center of every page.
           </p>
           <button
+            type="button"
             onClick={handleProcess}
-            className="w-full py-4 bg-cyan-600 hover:bg-cyan-700 text-white font-bold rounded-xl shadow-lg shadow-cyan-200 transition-all"
+            className="w-full py-5 bg-cyan-600 hover:bg-cyan-700 text-white font-bold rounded-xl shadow-lg shadow-cyan-200 transition-all text-lg"
           >
             Add Page Numbers
           </button>
@@ -681,14 +742,30 @@ export const AnnotateTool = () => {
   } | null>(null);
   const [tempText, setTempText] = useState("");
   const [processing, setProcessing] = useState(false);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
-    if (file) {
+    const loadPageContext = async () => {
+      if (!file) return;
       setProcessing(true);
-      pdfUtils.renderPageAsImage(file, 0).then((img) => {
+      try {
+        const pdf = await pdfUtils.getPdfDocument(file);
+        setTotalPages(pdf.numPages || 1);
+        const img = await pdfUtils.renderPageAsImage(file, currentPageIndex);
         setPageImage(img);
+      } finally {
         setProcessing(false);
-      });
+      }
+    };
+
+    loadPageContext();
+  }, [file, currentPageIndex]);
+
+  useEffect(() => {
+    if (!file) {
+      setCurrentPageIndex(0);
+      setTotalPages(1);
     }
   }, [file]);
 
@@ -709,7 +786,7 @@ export const AnnotateTool = () => {
           x: newAnnotation.x,
           y: newAnnotation.y,
           text: tempText,
-          pageIndex: 0,
+          pageIndex: currentPageIndex,
         },
       ]);
       setNewAnnotation(null);
@@ -739,7 +816,12 @@ export const AnnotateTool = () => {
   };
 
   return (
-    <ToolLayout title="Annotate Document" isProcessing={processing}>
+    <ToolLayout 
+      title="Annotate Document" 
+      isProcessing={processing}
+      progressLabel="Saving Annotations..."
+      progressSubLabel={`Committing ${annotations.length || 1} annotation item(s)`}
+    >
       {!file ? (
         <FileUpload
           onFilesSelected={(files) => setFile(files[0])}
@@ -749,25 +831,57 @@ export const AnnotateTool = () => {
         <div className="flex flex-col items-center">
           <div className="bg-blue-50 p-4 rounded-xl mb-6 text-sm text-blue-700 border border-blue-100 flex items-center gap-2">
             <AlertCircle size={16} />
-            <span>
-              Click anywhere on the document to add a comment. (Demo: Edits Page
-              1)
-            </span>
+            <span>Click anywhere on the current page to add a comment.</span>
+          </div>
+
+          <div className="w-full max-w-3xl bg-white border border-gray-200 rounded-xl p-3 mb-4">
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setCurrentPageIndex((prev) => Math.max(prev - 1, 0))}
+                disabled={currentPageIndex === 0 || processing}
+                className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="text-sm font-medium text-gray-700">
+                Page {currentPageIndex + 1} / {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentPageIndex((prev) => Math.min(prev + 1, totalPages - 1))
+                }
+                disabled={currentPageIndex >= totalPages - 1 || processing}
+                className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
           </div>
 
           <div
             className="relative inline-block shadow-2xl border border-gray-200"
-            onClick={handleImageClick}
           >
             {pageImage && (
-              <img
-                src={pageImage}
-                alt="PDF Page"
-                className="max-w-full md:max-w-3xl"
-              />
+              <>
+                <img
+                  src={pageImage}
+                  alt="PDF Page"
+                  className="max-w-full md:max-w-3xl"
+                />
+                <button
+                  type="button"
+                  onClick={handleImageClick}
+                  className="absolute inset-0"
+                  aria-label="Add annotation"
+                />
+              </>
             )}
 
-            {annotations.map((ann) => (
+            {annotations
+              .filter((ann) => ann.pageIndex === currentPageIndex)
+              .map((ann) => (
               <div
                 key={ann.id}
                 className="absolute bg-yellow-100 border border-yellow-300 p-2 rounded shadow-md text-xs max-w-[200px]"
@@ -790,25 +904,25 @@ export const AnnotateTool = () => {
                   top: `${newAnnotation.y}%`,
                   transform: "translate(-50%, -100%)",
                 }}
-                onClick={(e) => e.stopPropagation()}
               >
                 <div className="bg-white p-3 rounded-lg shadow-xl border border-gray-200 w-64">
                   <textarea
                     className="w-full text-sm border border-gray-200 rounded p-2 mb-2 outline-none focus:border-brand-500"
                     placeholder="Enter your comment..."
-                    autoFocus
                     rows={3}
                     value={tempText}
                     onChange={(e) => setTempText(e.target.value)}
                   />
                   <div className="flex justify-end gap-2">
                     <button
+                      type="button"
                       onClick={() => setNewAnnotation(null)}
                       className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1"
                     >
                       Cancel
                     </button>
                     <button
+                      type="button"
                       onClick={saveAnnotation}
                       className="text-xs bg-brand-600 text-white px-3 py-1 rounded hover:bg-brand-700"
                     >
@@ -821,19 +935,21 @@ export const AnnotateTool = () => {
             )}
           </div>
 
-          <div className="mt-8 flex gap-4">
+          <div className="mt-8 flex gap-4 w-full justify-center">
             <button
+              type="button"
               onClick={() => {
                 setFile(null);
                 setAnnotations([]);
               }}
-              className="px-6 py-3 text-gray-600 font-medium hover:bg-gray-100 rounded-xl transition-colors"
+              className="px-8 py-4 text-gray-600 font-medium hover:bg-gray-100 rounded-xl transition-colors min-w-[120px]"
             >
               Reset
             </button>
             <button
+              type="button"
               onClick={handleDownload}
-              className="px-8 py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-lg shadow-brand-200"
+              className="px-10 py-4 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-lg shadow-brand-200 min-w-[200px] transition-all transform hover:-translate-y-0.5"
             >
               Save Document
             </button>
@@ -845,14 +961,34 @@ export const AnnotateTool = () => {
 };
 
 // --- OCR Tool ---
+import { ProgressStep } from "../components/ProgressSteps";
+
 export const OcrTool = () => {
   const [file, setFile] = useState<File | null>(null);
   const [resultText, setResultText] = useState("");
   const [processing, setProcessing] = useState(false);
+  
+  const [ocrSteps, setOcrSteps] = useState<ProgressStep[]>([
+    { id: "prep", label: "Preprocessing Image", status: "pending" },
+    { id: "ai", label: "AI Recognition (Gemini)", status: "pending" },
+    { id: "done", label: "Finalizing", status: "pending" },
+  ]);
+
+  const updateStep = (id: string, status: ProgressStep["status"]) => {
+    setOcrSteps((prev) => prev.map(s => s.id === id ? { ...s, status } : s));
+  };
 
   const handleOcr = async () => {
     if (!file) return;
     setProcessing(true);
+    
+    // Reset
+    setOcrSteps([
+      { id: "prep", label: "Preprocessing Image", status: "processing" },
+      { id: "ai", label: "AI Recognition (Gemini)", status: "pending" },
+      { id: "done", label: "Finalizing", status: "pending" },
+    ]);
+
     try {
       let fileToSend = file;
       if (file.type === "application/pdf") {
@@ -861,11 +997,20 @@ export const OcrTool = () => {
         const blob = await res.blob();
         fileToSend = new File([blob], "page1.png", { type: "image/png" });
       }
+      
+      updateStep("prep", "completed");
+      updateStep("ai", "processing");
 
       const text = await geminiService.performOCR(fileToSend);
+      
+      updateStep("ai", "completed");
+      updateStep("done", "processing");
+      
       setResultText(text);
+      updateStep("done", "completed");
     } catch (e) {
       console.error(e);
+      updateStep("ai", "error");
       alert("OCR failed. Please check your API key or network.");
     } finally {
       setProcessing(false);
@@ -873,7 +1018,13 @@ export const OcrTool = () => {
   };
 
   return (
-    <ToolLayout title="OCR Text Extractor" isProcessing={processing}>
+    <ToolLayout 
+      title="OCR Text Extractor" 
+      isProcessing={processing}
+      progressSteps={ocrSteps}
+      progressLabel="AI OCR Processing"
+      progressSubLabel={`Scanning ${file ? 1 : 0} file with OCR stages`}
+    >
       {!file ? (
         <FileUpload
           onFilesSelected={(files) => setFile(files[0])}
@@ -888,6 +1039,7 @@ export const OcrTool = () => {
                 <span className="font-semibold text-gray-700">{file.name}</span>
               </div>
               <button
+                type="button"
                 onClick={() => {
                   setFile(null);
                   setResultText("");
@@ -904,8 +1056,9 @@ export const OcrTool = () => {
                   Ready to scan. AI will extract text from this document.
                 </p>
                 <button
+                  type="button"
                   onClick={handleOcr}
-                  className="px-8 py-3 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl shadow-lg shadow-violet-200 transition-all"
+                  className="px-10 py-4 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl shadow-lg shadow-violet-200 transition-all text-lg transform hover:-translate-y-0.5"
                 >
                   Start OCR Extraction
                 </button>
@@ -914,16 +1067,18 @@ export const OcrTool = () => {
 
             {resultText && (
               <div className="flex-1 relative">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">
+                <label htmlFor="ocr-result-text" className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">
                   Extracted Text
                 </label>
                 <textarea
+                  id="ocr-result-text"
                   className="w-full h-[400px] p-4 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 font-mono text-sm leading-relaxed outline-none focus:border-violet-500 resize-none"
                   value={resultText}
                   readOnly
                 />
                 <div className="mt-4 flex justify-end">
                   <button
+                    type="button"
                     onClick={() => navigator.clipboard.writeText(resultText)}
                     className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg font-medium transition-colors"
                   >
@@ -965,7 +1120,12 @@ export const CompressPdfTool = () => {
   };
 
   return (
-    <ToolLayout title="Compress PDF" isProcessing={processing}>
+    <ToolLayout 
+      title="Compress PDF" 
+      isProcessing={processing}
+      progressLabel="Compressing PDF..."
+      progressSubLabel={`Optimizing ${file ? 1 : 0} file at ${Math.round((1 - quality) * 100)}% level`}
+    >
       {!file ? (
         <FileUpload onFilesSelected={(f) => setFile(f[0])} accept=".pdf" />
       ) : (
@@ -973,10 +1133,11 @@ export const CompressPdfTool = () => {
           <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm text-center">
             <h3 className="text-lg font-bold mb-4">{file.name}</h3>
             <div className="mb-8">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="compression-level" className="block text-sm font-medium text-gray-700 mb-2">
                 Compression Level: {Math.round((1 - quality) * 100)}%
               </label>
               <input
+                id="compression-level"
                 type="range"
                 min="0.1"
                 max="1.0"
@@ -992,8 +1153,9 @@ export const CompressPdfTool = () => {
               </div>
             </div>
             <button
+              type="button"
               onClick={handleCompress}
-              className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-lg"
+              className="w-full py-5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-lg text-lg transition-all"
             >
               Compress PDF
             </button>
@@ -1030,12 +1192,14 @@ const SortablePageThumbnail = ({ page, onRotate, onRemove }: any) => {
       <div className="relative aspect-[1/1.4] bg-white shadow-sm overflow-hidden flex items-center justify-center">
         <img
           src={page.img}
+          alt={`PDF page ${parseInt(page.id) + 1} thumbnail`}
           className="max-w-full max-h-full object-contain transition-transform duration-300"
           style={{ transform: `rotate(${page.rotation}deg)` }}
         />
         {/* Hover Actions */}
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
           <button
+            type="button"
             onMouseDown={(e) => {
               e.stopPropagation();
               onRotate();
@@ -1045,6 +1209,7 @@ const SortablePageThumbnail = ({ page, onRotate, onRemove }: any) => {
             <RotateCw size={16} />
           </button>
           <button
+            type="button"
             onMouseDown={(e) => {
               e.stopPropagation();
               onRemove();
@@ -1154,7 +1319,12 @@ export const OrganizePdfTool = () => {
   };
 
   return (
-    <ToolLayout title="Organize PDF" isProcessing={processing}>
+    <ToolLayout 
+      title="Organize PDF" 
+      isProcessing={processing}
+      progressLabel="Saving PDF..."
+      progressSubLabel={`Writing ${pages.length || 1} page operation(s)`}
+    >
       {!file ? (
         <FileUpload onFilesSelected={(f) => setFile(f[0])} accept=".pdf" />
       ) : (
@@ -1164,8 +1334,9 @@ export const OrganizePdfTool = () => {
               Drag to reorder, click rotate to fix orientation.
             </p>
             <button
+              type="button"
               onClick={handleSave}
-              className="px-6 py-2 bg-brand-600 text-white rounded-lg"
+              className="px-6 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-md transition-all font-medium"
             >
               Save Changes
             </button>

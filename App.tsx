@@ -15,7 +15,9 @@ import {
   Grid,
   Stamp,
   Shield,
+  Unlock,
   Type,
+  BookOpen,
 } from "lucide-react";
 
 // 페이지 컴포넌트 Lazy Loading
@@ -67,6 +69,11 @@ const PdfToMdTool = lazy(() =>
     default: module.PdfToMdTool,
   }))
 );
+const EpubToPdfTool = lazy(() =>
+  import("./src/pages/OfficeTools").then((module) => ({
+    default: module.EpubToPdfTool,
+  }))
+);
 // New Tools
 const CompressPdfTool = lazy(() =>
   import("./src/pages/PdfTools").then((module) => ({
@@ -88,17 +95,16 @@ const ProtectTool = lazy(() =>
     default: module.ProtectTool,
   }))
 );
+const UnlockTool = lazy(() =>
+  import("./src/pages/ProtectTool").then((module) => ({
+    default: module.UnlockTool,
+  }))
+);
 const SignTool = lazy(() =>
   import("./src/pages/SignTool").then((module) => ({
     default: module.SignTool,
   }))
 );
-const MdToPdfTool = lazy(() =>
-  import("./src/pages/OfficeTools").then((module) => ({
-    default: module.MdToPdfTool,
-  }))
-);
-
 // 공통 컴포넌트 임포트
 import { Navbar, Footer } from "./src/components/Layout";
 import { ToolCard } from "./src/components/Shared";
@@ -212,6 +218,13 @@ const Dashboard = () => {
           description="Add signatures easily."
           colorClass="bg-emerald-600"
         />
+        <ToolCard
+          to="/unlock"
+          icon={Unlock}
+          title="Unlock PDF"
+          description="Unlock password-protected PDF files."
+          colorClass="bg-teal-600"
+        />
 
         {/* NEW Office Tools */}
         <ToolCard
@@ -236,11 +249,11 @@ const Dashboard = () => {
           colorClass="bg-purple-600"
         />
         <ToolCard
-          to="/md-to-pdf"
-          icon={FileText}
-          title="Markdown to PDF"
-          description="Convert Markdown files to PDF."
-          colorClass="bg-green-600"
+          to="/epub-to-pdf"
+          icon={BookOpen}
+          title="EPUB to PDF"
+          description="Convert EPUB ebook files into readable PDF documents."
+          colorClass="bg-emerald-600"
         />
       </section>
 
@@ -385,6 +398,16 @@ const App = () => {
             </ErrorBoundary>
           }
         />
+        <Route
+          path="/unlock"
+          element={
+            <ErrorBoundary fallback={<SimpleErrorFallback />}>
+              <Suspense fallback={<LoadingSpinner />}>
+                <UnlockTool />
+              </Suspense>
+            </ErrorBoundary>
+          }
+        />
 
         {/* New Office Tools Routes */}
         <Route
@@ -418,11 +441,11 @@ const App = () => {
           }
         />
         <Route
-          path="/md-to-pdf"
+          path="/epub-to-pdf"
           element={
             <ErrorBoundary fallback={<SimpleErrorFallback />}>
               <Suspense fallback={<LoadingSpinner />}>
-                <MdToPdfTool />
+                <EpubToPdfTool />
               </Suspense>
             </ErrorBoundary>
           }

@@ -3,11 +3,23 @@ import {
   Document as DocxDocument,
   Packer,
   TextRun,
-  ImageRun,
 } from "docx";
 import { saveAs } from "file-saver";
 import mammoth from "mammoth";
 import * as pdfjsLib from "pdfjs-dist";
+import JSZip from "jszip";
+
+export type ProgressCallback = (current: number, total: number, message?: string) => void;
+
+type EpubConversionDiagnostics = {
+  chapterSkips: Map<string, number>;
+  imageSkips: Map<string, number>;
+};
+
+type ManifestEntry = {
+  href: string;
+  mediaType: string;
+};
 
 // PDF.js 워커 설정 (pdfUtils.ts와 동일하게 설정)
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
@@ -18,19 +30,28 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@${pdfjsLib.v
  */
 export const pdfToDocx = async (
   file: File,
-  option: "preserve-layout" | "extract-text" = "preserve-layout"
+  option: "preserve-layout" | "extract-text" = "preserve-layout",
+  onProgress?: ProgressCallback
 ): Promise<void> => {
   try {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
     const docChildren: Paragraph[] = [];
+    const totalPages = pdf.numPages;
 
-    for (let i = 1; i <= pdf.numPages; i++) {
+    for (let i = 1; i <= totalPages; i++) {
+      onProgress?.(i, totalPages, `Converting page ${i} of ${totalPages}`);
       const page = await pdf.getPage(i);
       const textContent = await page.getTextContent();
 
-      // 페이지의 텍스트 아이템들을 하나의 문자열로 결합 (단순화된 로직)
-      const pageText = textContent.items.map((item: any) => item.str).join(" ");
+      const pageText = textContent.items
+        .map((item) => ("str" in item ? item.str : ""))
+        .join(option === "extract-text" ? " " : "\n")
+        .trim();
+
+      if (!pageText) {
+        continue;
+      }
 
       // DOCX 단락 생성
       docChildren.push(
@@ -40,8 +61,7 @@ export const pdfToDocx = async (
         })
       );
 
-      // 페이지 구분선 추가 (선택 사항)
-      if (i < pdf.numPages) {
+      if (option === "preserve-layout" && i < pdf.numPages) {
         docChildren.push(new Paragraph({ text: "--- Page Break ---" }));
       }
     }
@@ -58,74 +78,438 @@ export const pdfToDocx = async (
   }
 };
 
+const dirname = (path: string) => {
+  const idx = path.lastIndexOf("/");
+  return idx === -1 ? "" : path.slice(0, idx + 1);
+};
+
+const incrementBucket = (buckets: Map<string, number>, key: string) => {
+  buckets.set(key, (buckets.get(key) || 0) + 1);
+};
+
+const safeDecodeURIComponent = (value: string) => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
+const getElementsByLocalName = (root: Document | Element, localName: string) => {
+  const direct = Array.from(root.getElementsByTagName(localName));
+  if (direct.length > 0) {
+    return direct;
+  }
+
+  return Array.from(root.getElementsByTagName("*")).filter(
+    (node) => node.localName?.toLowerCase() === localName
+  );
+};
+
+const normalizePath = (path: string) => {
+  const output: string[] = [];
+  for (const segment of path.split("/")) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") {
+      output.pop();
+      continue;
+    }
+    output.push(segment);
+  }
+  return output.join("/");
+};
+
+const resolvePath = (baseDir: string, relativePath: string) => {
+  const decoded = safeDecodeURIComponent(relativePath);
+  if (!baseDir) return normalizePath(decoded);
+  return normalizePath(`${baseDir}${decoded}`);
+};
+
+const sanitizeHref = (value: string) => value.split("#")[0].split("?")[0];
+
+const toAssetMimeType = (path: string): string | null => {
+  const lower = path.toLowerCase();
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".svg")) return "image/svg+xml";
+  return null;
+};
+
+const toBase64 = (bytes: Uint8Array) => {
+  const chunk = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+};
+
+const toDataUrlFromBytes = (bytes: Uint8Array, mimeType: string) => {
+  if (mimeType === "image/svg+xml") {
+    const svgText = new TextDecoder("utf-8").decode(bytes);
+    return `data:${mimeType};charset=utf-8,${encodeURIComponent(svgText)}`;
+  }
+  return `data:${mimeType};base64,${toBase64(bytes)}`;
+};
+
+const stripFileExtension = (name: string) => name.replace(/\.[^.]+$/, "");
+
+const mapWithConcurrency = async <T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> => {
+  if (!items.length) {
+    return [];
+  }
+
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+
+  const runWorker = async () => {
+    while (true) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= items.length) {
+        return;
+      }
+
+      results[index] = await worker(items[index], index);
+    }
+  };
+
+  const poolSize = Math.max(1, Math.min(concurrency, items.length));
+  await Promise.all(Array.from({ length: poolSize }, () => runWorker()));
+  return results;
+};
+
+const getRootfilePath = (containerDoc: Document) => {
+  const rootfiles = getElementsByLocalName(containerDoc, "rootfile");
+  if (!rootfiles.length) {
+    return null;
+  }
+
+  const preferred = rootfiles.find(
+    (node) =>
+      (node.getAttribute("media-type") || "").trim().toLowerCase() ===
+      "application/oebps-package+xml"
+  );
+
+  return (
+    preferred?.getAttribute("full-path") ||
+    rootfiles[0].getAttribute("full-path") ||
+    null
+  );
+};
+
+const getOpfTitle = (opfDoc: Document, fallbackName: string) => {
+  const metadata = getElementsByLocalName(opfDoc, "metadata")[0];
+  if (!metadata) {
+    return fallbackName;
+  }
+
+  const titleNode = getElementsByLocalName(metadata, "title")[0];
+  return titleNode?.textContent?.trim() || fallbackName;
+};
+
+const getManifestMap = (opfDoc: Document) => {
+  const manifestMap = new Map<string, ManifestEntry>();
+  const manifest = getElementsByLocalName(opfDoc, "manifest")[0];
+  if (!manifest) {
+    return manifestMap;
+  }
+
+  const items = getElementsByLocalName(manifest, "item");
+  for (const item of items) {
+    const id = item.getAttribute("id");
+    const href = item.getAttribute("href");
+    const mediaType = item.getAttribute("media-type") || "";
+    if (id && href) {
+      manifestMap.set(id, { href, mediaType });
+    }
+  }
+
+  return manifestMap;
+};
+
+const getSpineIds = (opfDoc: Document) => {
+  const spine = getElementsByLocalName(opfDoc, "spine")[0];
+  if (!spine) {
+    return [];
+  }
+
+  return getElementsByLocalName(spine, "itemref")
+    .map((node) => node.getAttribute("idref"))
+    .filter((id): id is string => Boolean(id));
+};
+
+export const epubToPdf = async (
+  file: File,
+  onProgress?: ProgressCallback
+): Promise<void> => {
+  try {
+    const diagnostics: EpubConversionDiagnostics = {
+      chapterSkips: new Map(),
+      imageSkips: new Map(),
+    };
+
+    let lastProgress = -1;
+    const emitProgress = (value: number, message: string) => {
+      const normalized = Math.max(0, Math.min(100, Math.round(value)));
+      if (normalized !== lastProgress || normalized === 100) {
+        lastProgress = normalized;
+        onProgress?.(normalized, 100, message);
+      }
+    };
+
+    emitProgress(0, "Loading EPUB archive");
+    const zip = await JSZip.loadAsync(await file.arrayBuffer());
+    const containerXml = await zip.file("META-INF/container.xml")?.async("string");
+
+    if (!containerXml) {
+      throw new Error("Invalid EPUB: container.xml not found");
+    }
+
+    const parser = new DOMParser();
+    const containerDoc = parser.parseFromString(containerXml, "application/xml");
+    const rootfilePath = getRootfilePath(containerDoc);
+
+    if (!rootfilePath) {
+      throw new Error("Invalid EPUB: OPF rootfile path missing");
+    }
+
+    const opfText = await zip.file(rootfilePath)?.async("string");
+    if (!opfText) {
+      throw new Error("Invalid EPUB: package file not found");
+    }
+
+    const opfDoc = parser.parseFromString(opfText, "application/xml");
+    const title = getOpfTitle(opfDoc, stripFileExtension(file.name));
+
+    const manifestMap = getManifestMap(opfDoc);
+    const spineIds = getSpineIds(opfDoc);
+
+    if (!spineIds.length) {
+      throw new Error("EPUB 변환 실패: spine 항목을 찾지 못했습니다.");
+    }
+
+    emitProgress(20, "Indexing EPUB chapters");
+    const baseDir = dirname(rootfilePath);
+    const chapterPaths: string[] = [];
+    const sharedStyleTexts: string[] = [];
+
+    for (const entry of manifestMap.values()) {
+      if (!/css/i.test(entry.mediaType)) {
+        continue;
+      }
+
+      const cssPath = resolvePath(baseDir, entry.href);
+      const cssText = await zip.file(cssPath)?.async("string");
+      if (cssText) {
+        sharedStyleTexts.push(cssText);
+      }
+    }
+
+    for (let spineIndex = 0; spineIndex < spineIds.length; spineIndex++) {
+      const id = spineIds[spineIndex];
+      emitProgress(
+        20 + Math.round((spineIndex / spineIds.length) * 32),
+        `Indexing chapter ${spineIndex + 1} of ${spineIds.length}`
+      );
+
+      const entry = manifestMap.get(id);
+      if (!entry?.href) {
+        incrementBucket(diagnostics.chapterSkips, "manifest-href-missing");
+        continue;
+      }
+
+      chapterPaths.push(resolvePath(baseDir, entry.href));
+    }
+
+    if (!chapterPaths.length) {
+      throw new Error("EPUB 변환 실패: 유효한 chapter 항목을 찾지 못했습니다.");
+    }
+
+    emitProgress(52, "Preparing chapter HTML in parallel");
+    const chapterCount = chapterPaths.length;
+    let preparedCount = 0;
+
+    const chapterHtmlSections = await mapWithConcurrency<
+      string,
+      { bodyMarkup: string; styleText: string }
+    >(
+      chapterPaths,
+      4,
+      async (chapterPath) => {
+        const chapterMarkup = await zip.file(chapterPath)?.async("string");
+        if (!chapterMarkup) {
+          incrementBucket(diagnostics.chapterSkips, "chapter-file-missing");
+          preparedCount += 1;
+          emitProgress(
+            52 + Math.round((preparedCount / chapterCount) * 28),
+            `Prepared chapter ${preparedCount} of ${chapterCount}`
+          );
+          return { bodyMarkup: "", styleText: "" };
+        }
+
+        const parser = new DOMParser();
+        const chapterDoc = parser.parseFromString(chapterMarkup, "text/html");
+        const chapterDir = dirname(chapterPath);
+
+        const chapterStyleTexts: string[] = [];
+        const styleNodes = Array.from(chapterDoc.querySelectorAll("style"));
+        for (const styleNode of styleNodes) {
+          const text = styleNode.textContent?.trim();
+          if (text) chapterStyleTexts.push(text);
+        }
+
+        const linkNodes = Array.from(
+          chapterDoc.querySelectorAll("link[rel~='stylesheet'][href]")
+        );
+        for (const linkNode of linkNodes) {
+          const href = linkNode.getAttribute("href");
+          if (!href) continue;
+          const cssPath = resolvePath(chapterDir, sanitizeHref(href));
+          const cssText = await zip.file(cssPath)?.async("string");
+          if (cssText) chapterStyleTexts.push(cssText);
+        }
+
+        const imageNodes = Array.from(chapterDoc.querySelectorAll("img[src]"));
+        for (const imageNode of imageNodes) {
+          const src = imageNode.getAttribute("src");
+          if (!src || src.startsWith("data:")) {
+            continue;
+          }
+
+          const imagePath = resolvePath(chapterDir, sanitizeHref(src));
+          const mimeType = toAssetMimeType(imagePath);
+          const imageFile = zip.file(imagePath);
+          if (!mimeType || !imageFile) {
+            incrementBucket(diagnostics.imageSkips, "image-file-missing");
+            continue;
+          }
+
+          const bytes = new Uint8Array(await imageFile.async("arraybuffer"));
+          imageNode.setAttribute("src", toDataUrlFromBytes(bytes, mimeType));
+        }
+
+        const bodyMarkup = chapterDoc.body?.innerHTML?.trim() || "";
+        if (!bodyMarkup) {
+          incrementBucket(diagnostics.chapterSkips, "chapter-extraction-empty");
+        }
+
+        preparedCount += 1;
+        emitProgress(
+          52 + Math.round((preparedCount / chapterCount) * 28),
+          `Prepared chapter ${preparedCount} of ${chapterCount}`
+        );
+
+        return {
+          bodyMarkup,
+          styleText: chapterStyleTexts.join("\n"),
+        };
+      }
+    );
+
+    const validSections = chapterHtmlSections.filter((section) => section.bodyMarkup.length > 0);
+    if (!validSections.length) {
+      const details = Array.from(diagnostics.chapterSkips.entries())
+        .map(([reason, count]) => `${reason}:${count}`)
+        .join(", ");
+      throw new Error(
+        details
+          ? `EPUB 변환 실패: 본문 콘텐츠를 찾지 못했습니다. (${details})`
+          : "EPUB 변환 실패: 본문 콘텐츠를 찾지 못했습니다."
+      );
+    }
+
+    if (diagnostics.chapterSkips.size > 0 || diagnostics.imageSkips.size > 0) {
+      console.warn("EPUB conversion partial warnings", {
+        chapterSkips: Object.fromEntries(diagnostics.chapterSkips),
+        imageSkips: Object.fromEntries(diagnostics.imageSkips),
+      });
+    }
+
+    emitProgress(82, "Composing layout");
+    const chapterMarkup = validSections
+      .map(
+        (section, index) =>
+          `<article class="epub-chapter" data-index="${index}">${section.bodyMarkup}</article>`
+      )
+      .join("\n");
+
+    const chapterStyleBlock = validSections.map((section) => section.styleText).join("\n");
+    const sharedStyleBlock = sharedStyleTexts.join("\n");
+
+    const printHtml = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title}</title>
+    <style>
+      @page { size: A4; margin: 14mm; }
+      html, body { margin: 0; padding: 0; background: #fff; }
+      body { font-family: "Noto Serif", "Apple SD Gothic Neo", "Noto Sans CJK KR", "Noto Sans CJK JP", "Noto Sans CJK SC", serif; color: #111; line-height: 1.5; }
+      .epub-book { max-width: 900px; margin: 0 auto; }
+      .epub-title { font-size: 28px; font-weight: 700; margin: 0 0 24px; page-break-after: avoid; }
+      .epub-chapter { break-inside: avoid; page-break-after: always; margin: 0 0 24px; }
+      .epub-chapter:last-child { page-break-after: auto; }
+      img, svg { max-width: 100%; height: auto; }
+      table { width: 100%; border-collapse: collapse; }
+      pre { white-space: pre-wrap; word-break: break-word; }
+      ${sharedStyleBlock}
+      ${chapterStyleBlock}
+    </style>
+  </head>
+  <body>
+    <main class="epub-book">
+      <h1 class="epub-title">${title}</h1>
+      ${chapterMarkup}
+    </main>
+  </body>
+</html>`;
+
+    emitProgress(92, "Rendering PDF headlessly");
+    const response = await fetch("/api/render-pdf", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ html: printHtml }),
+    });
+
+    if (!response.ok) {
+      let serverError = "헤드리스 PDF 렌더링에 실패했습니다.";
+      try {
+        const payload = await response.json();
+        if (payload && typeof payload.error === "string") {
+          serverError = payload.error;
+        }
+      } catch {
+      }
+      throw new Error(serverError);
+    }
+
+    emitProgress(98, "Downloading file");
+    const pdfBlob = await response.blob();
+    saveAs(pdfBlob, `${stripFileExtension(file.name)}.pdf`);
+    emitProgress(100, "Done");
+  } catch (error) {
+    console.error("EPUB to PDF Error:", error);
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error("EPUB를 PDF로 변환하는데 실패했습니다.");
+  }
+};
+
 /**
  * DOCX to PDF: Mammoth를 이용한 HTML 변환 -> 인쇄/PDF 저장 유도
  * (클라이언트 사이드에서 완벽한 바이너리 변환은 불가능하므로, 미리보기를 띄우고 인쇄를 유도합니다)
  */
-export const mdToPdf = async (file: File): Promise<void> => {
-  try {
-    const text = await file.text();
-
-    // Simple Markdown to HTML conversion
-    const html = text
-      // Headers
-      .replace(/^### (.*$)/gim, "<h3>$1</h3>")
-      .replace(/^## (.*$)/gim, "<h2>$1</h2>")
-      .replace(/^# (.*$)/gim, "<h1>$1</h1>")
-      // Bold
-      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-      // Italic
-      .replace(/\*(.*?)\*/g, "<em>$1</em>")
-      // Line breaks
-      .replace(/\n\n/g, "</p><p>")
-      .replace(/\n/g, "<br>")
-      // Lists
-      .replace(/^\* (.+)$/gim, "<li>$1</li>")
-      .replace(/(<li>.*<\/li>)/gs, "<ul>$1</ul>")
-      // Paragraphs
-      .replace(/^(?!<[h|u|l|p])(.+)$/gim, "<p>$1</p>");
-
-    // Wrap in HTML structure
-    const fullHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=1200, initial-scale=1.0">
-        <style>
-          @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap');
-          body { font-family: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; line-height: 1.6; color: #333; width: 1160px; max-width: 1160px; margin: 0 auto; padding: 20px; box-sizing: border-box; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-          h1, h2, h3 { color: #2563eb; margin-top: 24px; margin-bottom: 16px; }
-          h1 { font-size: 2em; }
-          h2 { font-size: 1.5em; }
-          h3 { font-size: 1.25em; }
-          ul { margin: 16px 0; }
-          li { margin: 8px 0; }
-          p { margin: 16px 0; }
-          strong { font-weight: bold; }
-          em { font-style: italic; }
-        </style>
-      </head>
-      <body>
-        ${html}
-      </body>
-      </html>
-    `;
-
-    // Create blob and download
-    const blob = new Blob([fullHtml], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = file.name.replace(/\.(md|markdown|txt)$/, ".pdf");
-    link.click();
-    URL.revokeObjectURL(url);
-  } catch (error) {
-    console.error("Markdown to PDF conversion error:", error);
-    throw new Error("Markdown을 PDF로 변환하는 데 실패했습니다.");
-  }
-};
-
 export const docxToPdf = async (file: File): Promise<string> => {
   try {
     const arrayBuffer = await file.arrayBuffer();

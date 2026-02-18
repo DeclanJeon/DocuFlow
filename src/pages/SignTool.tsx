@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
-  Type,
-  X,
   Plus,
-  Download,
-  CheckCircle2,
   Upload,
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { ToolLayout } from "../components/Layout";
 import { FileUpload } from "../components/Shared";
@@ -71,7 +69,8 @@ const SignaturePad = ({
     canvas: HTMLCanvasElement
   ) => {
     // 터치/마우스 좌표 통합 처리
-    let clientX, clientY;
+    let clientX: number;
+    let clientY: number;
 
     if ("touches" in e) {
       const touch = (e as React.TouchEvent).touches[0];
@@ -127,18 +126,21 @@ const SignaturePad = ({
         </div>
         <div className="flex justify-end gap-2">
           <button
+            type="button"
             onClick={handleClear}
             className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
           >
             Clear
           </button>
           <button
+            type="button"
             onClick={onCancel}
             className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSave}
             className="px-6 py-2 bg-brand-600 text-white rounded-lg text-sm font-bold hover:bg-brand-700"
           >
@@ -157,10 +159,12 @@ export const SignTool = () => {
   const [signatures, setSignatures] = useState<string[]>([]);
   const [selectedSig, setSelectedSig] = useState<string | null>(null);
   const [placedSigns, setPlacedSigns] = useState<
-    { x: number; y: number; img: string; id: string }[]
+    { x: number; y: number; img: string; id: string; pageIndex: number }[]
   >([]);
   const [processing, setProcessing] = useState(false);
   const [draggedSign, setDraggedSign] = useState<string | null>(null);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 로컬 스토리지에서 서명 불러오기
@@ -175,14 +179,27 @@ export const SignTool = () => {
     }
   }, []);
 
-  // PDF 첫 페이지 렌더링 (서명 위치 잡기용)
   useEffect(() => {
-    if (file) {
+    const loadPageContext = async () => {
+      if (!file) return;
       setProcessing(true);
-      pdfUtils.renderPageAsImage(file, 0).then((img) => {
+      try {
+        const pdf = await pdfUtils.getPdfDocument(file);
+        setTotalPages(pdf.numPages || 1);
+        const img = await pdfUtils.renderPageAsImage(file, currentPageIndex);
         setPageImage(img);
+      } finally {
         setProcessing(false);
-      });
+      }
+    };
+
+    loadPageContext();
+  }, [file, currentPageIndex]);
+
+  useEffect(() => {
+    if (!file) {
+      setCurrentPageIndex(0);
+      setTotalPages(1);
     }
   }, [file]);
 
@@ -221,6 +238,7 @@ export const SignTool = () => {
       y,
       img: selectedSig,
       id: Date.now().toString(),
+      pageIndex: currentPageIndex,
     };
     setPlacedSigns([...placedSigns, newSign]);
     setSelectedSig(null); // 한 번 찍으면 선택 해제
@@ -272,6 +290,7 @@ export const SignTool = () => {
       link.href = url;
       link.download = `signed_${file.name}`;
       link.click();
+      URL.revokeObjectURL(url);
     } catch (e) {
       console.error(e);
       alert("Error saving PDF");
@@ -281,7 +300,12 @@ export const SignTool = () => {
   };
 
   return (
-    <ToolLayout title="Sign PDF" isProcessing={processing}>
+    <ToolLayout
+      title="Sign PDF"
+      isProcessing={processing}
+      progressLabel="Preparing Signed PDF..."
+      progressSubLabel={`Applying ${placedSigns.length || 1} signature item(s)`}
+    >
       {showPad && (
         <SignaturePad
           onSave={handleSaveSignature}
@@ -303,6 +327,31 @@ export const SignTool = () => {
                   : "서명을 선택한 후 PDF 페이지를 클릭하여 배치하세요"}
               </span>
             </div>
+            <div className="mt-3 bg-white p-3 rounded-xl border border-gray-200">
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPageIndex((prev) => Math.max(prev - 1, 0))}
+                  disabled={currentPageIndex === 0 || processing}
+                  className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <span className="text-sm font-medium text-gray-700">
+                  Page {currentPageIndex + 1} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCurrentPageIndex((prev) => Math.min(prev + 1, totalPages - 1))
+                  }
+                  disabled={currentPageIndex >= totalPages - 1 || processing}
+                  className="px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
           </div>
           {/* 왼쪽: 서명 목록 */}
           <div className="w-full lg:w-64 flex flex-col gap-4">
@@ -310,8 +359,9 @@ export const SignTool = () => {
               <h3 className="font-bold text-gray-700 mb-3">My Signatures</h3>
               <div className="grid grid-cols-2 gap-2 mb-4">
                 {signatures.map((sig, i) => (
-                  <div
-                    key={i}
+                  <button
+                    type="button"
+                    key={`${sig.slice(0, 24)}-${i}`}
                     onClick={() => setSelectedSig(sig)}
                     draggable
                     onDragStart={(e) => handleDragStart(e, `sig-${i}`)}
@@ -325,9 +375,10 @@ export const SignTool = () => {
                       className="max-h-full max-w-full"
                       alt="signature"
                     />
-                  </div>
+                  </button>
                 ))}
                 <button
+                  type="button"
                   onClick={() => setShowPad(true)}
                   className="border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center p-2 hover:bg-gray-50 cursor-pointer"
                 >
@@ -345,6 +396,7 @@ export const SignTool = () => {
                   className="hidden"
                 />
                 <button
+                  type="button"
                   onClick={() => fileInputRef.current?.click()}
                   className="w-full py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg flex items-center justify-center gap-2 transition-colors"
                 >
@@ -354,12 +406,14 @@ export const SignTool = () => {
               </div>
 
               <button
+                type="button"
                 onClick={handleDownload}
                 className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl shadow-lg"
               >
                 Download Signed PDF
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setFile(null);
                   setPlacedSigns([]);
@@ -375,25 +429,38 @@ export const SignTool = () => {
           <div className="flex-1 bg-gray-100 rounded-xl overflow-auto p-4 flex justify-center items-start min-h-[500px]">
             <div
               className="relative shadow-xl border border-gray-200 inline-block"
-              onClick={handleCanvasClick}
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
             >
               {pageImage && (
-                <img
-                  src={pageImage}
-                  alt="PDF Page"
-                  className="max-w-full md:max-w-3xl"
-                />
+                <>
+                  <img
+                    src={pageImage}
+                    alt="PDF Page"
+                    className="max-w-full md:max-w-3xl"
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-0"
+                    onClick={handleCanvasClick}
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    aria-label="Place signature"
+                  />
+                </>
               )}
 
               {/* 배치된 서명들 */}
-              {placedSigns.map((ps, i) => (
-                <div
+              {placedSigns
+                .filter((ps) => ps.pageIndex === currentPageIndex)
+                .map((ps) => (
+                <button
+                  type="button"
                   key={ps.id}
                   draggable
                   onDragStart={(e) => handleDragStart(e, ps.id)}
                   onDragEnd={handleDragEnd}
+                  onDoubleClick={() =>
+                    setPlacedSigns((prev) => prev.filter((item) => item.id !== ps.id))
+                  }
                   className="absolute w-32 cursor-move"
                   style={{
                     left: `${ps.x}%`,
@@ -402,16 +469,7 @@ export const SignTool = () => {
                   }}
                 >
                   <img src={ps.img} className="w-full" alt="placed signature" />
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPlacedSigns(placedSigns.filter((_, idx) => idx !== i));
-                    }}
-                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow hover:scale-110"
-                  >
-                    <X size={10} />
-                  </button>
-                </div>
+                </button>
               ))}
             </div>
           </div>

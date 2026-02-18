@@ -50,6 +50,7 @@ export const FileUpload = ({
         if (format === "image/*") return "Images (JPG, PNG, etc.)";
         if (format === ".pdf") return "PDF";
         if (format === ".docx") return "DOCX";
+        if (format === ".epub") return "EPUB";
         return cleanFormat;
       })
       .join(", ");

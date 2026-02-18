@@ -35,8 +35,8 @@ export const WatermarkTool = () => {
   const handleProcess = async () => {
     if (!file) return;
     setProcessing(true);
-    try {
-      let bytes;
+      try {
+        let bytes: Uint8Array;
 
       try {
         if (watermarkType === "image" && imageFile) {
@@ -114,15 +114,20 @@ export const WatermarkTool = () => {
   };
 
   return (
-    <ToolLayout title="Add Watermark" isProcessing={processing}>
+    <ToolLayout
+      title="Add Watermark"
+      isProcessing={processing}
+      progressLabel="Applying Watermark..."
+      progressSubLabel={`Preparing and writing watermark to ${file ? 1 : 0} file`}
+    >
       {!file ? (
         <FileUpload onFilesSelected={(f) => setFile(f[0])} accept=".pdf" />
       ) : (
         <div className="max-w-md mx-auto bg-white p-6 rounded-xl border">
           <div className="mb-6">
-            <label className="block text-sm font-bold mb-2">
+            <p className="block text-sm font-bold mb-2">
               워터마크 종류
-            </label>
+            </p>
             <div className="flex gap-4 mb-4">
               <label className="flex items-center cursor-pointer">
                 <input
@@ -149,10 +154,11 @@ export const WatermarkTool = () => {
 
           {watermarkType === "text" && (
             <div>
-              <label className="block text-sm font-bold mb-2">
+              <label htmlFor="watermark-text" className="block text-sm font-bold mb-2">
                 워터마크 텍스트
               </label>
               <input
+                id="watermark-text"
                 type="text"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
@@ -160,10 +166,11 @@ export const WatermarkTool = () => {
                 className="w-full border p-2 rounded mb-4"
               />
               <div className="mb-4">
-                <label className="block text-sm font-bold mb-2">
+                <label htmlFor="watermark-size" className="block text-sm font-bold mb-2">
                   텍스트 크기: {textSize}px
                 </label>
                 <input
+                  id="watermark-size"
                   type="range"
                   min="12"
                   max="72"
@@ -188,7 +195,7 @@ export const WatermarkTool = () => {
 
           {watermarkType === "image" && (
             <div>
-              <label className="block text-sm font-bold mb-2">
+              <label htmlFor="image-upload" className="block text-sm font-bold mb-2">
                 이미지 워터마크
               </label>
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 mb-4">
@@ -216,12 +223,13 @@ export const WatermarkTool = () => {
                   <span className="text-sm text-gray-700">
                     {imageFile.name}
                   </span>
-                  <button
-                    onClick={() => setImageFile(null)}
-                    className="ml-auto text-red-500 hover:text-red-700"
-                  >
-                    삭제
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setImageFile(null)}
+                      className="ml-auto text-red-500 hover:text-red-700"
+                    >
+                      삭제
+                    </button>
                 </div>
               )}
             </div>
@@ -238,6 +246,7 @@ export const WatermarkTool = () => {
           </label>
 
           <button
+            type="button"
             onClick={handleProcess}
             className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold"
           >

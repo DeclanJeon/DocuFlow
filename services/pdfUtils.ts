@@ -6,10 +6,18 @@ import * as pdfjsLib from "pdfjs-dist";
 // We use .mjs file because we are in an ESM environment.
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
 
-export const mergePdfs = async (files: File[]): Promise<Uint8Array> => {
-  const mergedPdf = await PDFDocument.create();
+export type ProgressCallback = (current: number, total: number, message?: string) => void;
 
-  for (const file of files) {
+export const mergePdfs = async (
+  files: File[],
+  onProgress?: ProgressCallback
+): Promise<Uint8Array> => {
+  const mergedPdf = await PDFDocument.create();
+  const totalFiles = files.length;
+
+  for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
+    const file = files[fileIndex];
+    onProgress?.(fileIndex + 1, totalFiles, `Processing ${file.name}`);
     if (file.type === "application/pdf") {
       // Handle PDF files
       const arrayBuffer = await file.arrayBuffer();
@@ -91,7 +99,8 @@ export const mergePdfs = async (files: File[]): Promise<Uint8Array> => {
 export const splitPdf = async (
   file: File,
   mode: "range" | "count",
-  value: string | number
+  value: string | number,
+  onProgress?: ProgressCallback
 ): Promise<Uint8Array[]> => {
   const arrayBuffer = await file.arrayBuffer();
   const sourcePdf = await PDFDocument.load(arrayBuffer);
@@ -111,6 +120,7 @@ export const splitPdf = async (
 
       if (start >= pageCount) break;
 
+      onProgress?.(i + 1, parts, `Creating part ${i + 1} of ${parts}`);
       const newPdf = await PDFDocument.create();
       const range = Array.from({ length: end - start }, (_, k) => start + k);
       const copiedPages = await newPdf.copyPages(sourcePdf, range);
@@ -140,10 +150,16 @@ export const splitPdf = async (
   return resultPdfs;
 };
 
-export const imagesToPdf = async (files: File[]): Promise<Uint8Array> => {
+export const imagesToPdf = async (
+  files: File[],
+  onProgress?: ProgressCallback
+): Promise<Uint8Array> => {
   const pdfDoc = await PDFDocument.create();
+  const totalFiles = files.length;
 
-  for (const file of files) {
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    onProgress?.(i + 1, totalFiles, `Embedding ${file.name}`);
     const arrayBuffer = await file.arrayBuffer();
     let image;
 
@@ -168,13 +184,17 @@ export const imagesToPdf = async (files: File[]): Promise<Uint8Array> => {
   return pdfDoc.save();
 };
 
-export const pdfToImages = async (file: File): Promise<string[]> => {
+export const pdfToImages = async (
+  file: File,
+  onProgress?: ProgressCallback
+): Promise<string[]> => {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
   const pageCount = pdf.numPages;
   const imageUrls: string[] = [];
 
   for (let i = 1; i <= pageCount; i++) {
+    onProgress?.(i, pageCount, `Rendering page ${i} of ${pageCount}`);
     const page = await pdf.getPage(i);
     const viewport = page.getViewport({ scale: 2.0 }); // High quality
     const canvas = document.createElement("canvas");
@@ -268,13 +288,17 @@ export const saveAnnotationsToPdf = async (
 };
 
 // Extract text from PDF
-export const extractTextFromPdf = async (file: File): Promise<string> => {
+export const extractTextFromPdf = async (
+  file: File,
+  onProgress?: ProgressCallback
+): Promise<string> => {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
   const pageCount = pdf.numPages;
   let fullText = "";
 
   for (let i = 1; i <= pageCount; i++) {
+    onProgress?.(i, pageCount, `Extracting text from page ${i}`);
     const page = await pdf.getPage(i);
     const textContent = await page.getTextContent();
 
@@ -291,13 +315,19 @@ export const extractTextFromPdf = async (file: File): Promise<string> => {
 // 1. PDF 압축 (Rasterize & Compress)
 export const compressPdf = async (
   file: File,
-  quality: number = 0.7
+  quality: number = 0.7,
+  onProgress?: ProgressCallback
 ): Promise<Uint8Array> => {
   // 경고: 이 방식은 텍스트를 이미지로 변환(래스터화)하여 압축합니다. 텍스트 검색 기능이 사라질 수 있습니다.
-  const imageUrls = await pdfToImages(file); // 기존 함수 재활용 (scale 조절 필요 시 커스텀 필요)
+  const imageUrls = await pdfToImages(file, (current, total) => {
+    onProgress?.(Math.round(current / 2), total, `Rasterizing page ${current}/${total}`);
+  });
   const pdfDoc = await PDFDocument.create();
+  const totalImages = imageUrls.length;
 
-  for (const url of imageUrls) {
+  for (let i = 0; i < imageUrls.length; i++) {
+    const url = imageUrls[i];
+    onProgress?.(Math.round(totalImages / 2 + i / 2 + 1), totalImages, `Compressing image ${i + 1}/${totalImages}`);
     // 캔버스에서 이미지를 낮은 퀄리티로 다시 뽑아냄 (pdfToImages는 고화질로 뽑았다고 가정)
     // 여기서는 이미 base64로 되어있지만, 압축률 적용을 위해 이미지 객체로 변환 후 다시 캔버스에 그림
     const img = new Image();
@@ -332,13 +362,17 @@ export const compressPdf = async (
 // 2. 페이지 정리 (재배열, 회전, 삭제)
 export const reorderPdf = async (
   file: File,
-  pageOrders: { oldIndex: number; rotation: number; deleted: boolean }[] // 순서대로 정렬된 배열
+  pageOrders: { oldIndex: number; rotation: number; deleted: boolean }[], // 순서대로 정렬된 배열
+  onProgress?: ProgressCallback
 ): Promise<Uint8Array> => {
   const arrayBuffer = await file.arrayBuffer();
   const srcDoc = await PDFDocument.load(arrayBuffer);
   const newDoc = await PDFDocument.create();
+  const totalOrders = pageOrders.length;
 
-  for (const order of pageOrders) {
+  for (let i = 0; i < pageOrders.length; i++) {
+    const order = pageOrders[i];
+    onProgress?.(i + 1, totalOrders, `Processing page ${order.oldIndex + 1}`);
     if (order.deleted) continue;
 
     const [page] = await newDoc.copyPages(srcDoc, [order.oldIndex]);
@@ -513,7 +547,7 @@ export const encryptPdf = async (
   const arrayBuffer = await file.arrayBuffer();
   const doc = await PDFDocument.load(arrayBuffer);
 
-  // TODO: pdf-lib API 변경으로 인한 임시 처리
+  // TODO: pdf-lib API 변경으로 인한 임시 처리 (암호화 기능 구현 필요)
   // 추후 라이브러리 문서 확인 후 수정 필요
   // 현재는 암호화 없이 저장만 가능
   console.warn("PDF 암호화 기능은 현재 개발 중입니다. 암호화 없이 저장됩니다.");
@@ -524,7 +558,8 @@ export const encryptPdf = async (
 export const addImageWatermark = async (
   file: File,
   imageBytes: ArrayBuffer,
-  options: { opacity: number; isTile: boolean; size?: number }
+  options: { opacity: number; isTile: boolean; size?: number },
+  onProgress?: ProgressCallback
 ): Promise<Uint8Array> => {
   const arrayBuffer = await file.arrayBuffer();
   const doc = await PDFDocument.load(arrayBuffer);
@@ -533,7 +568,8 @@ export const addImageWatermark = async (
   // 이미지 임베드
   const imageEmbed = await doc.embedPng(imageBytes);
 
-  pages.forEach((page) => {
+  pages.forEach((page, index) => {
+    onProgress?.(index + 1, pages.length, `Applying watermark to page ${index + 1}`);
     const { width, height } = page.getSize();
 
     // 페이지 크기에 비례하여 워터마크 크기 조정
@@ -638,13 +674,13 @@ export const unlockPdf = async (
   file: File,
   password: string
 ): Promise<Uint8Array> => {
-  // 1. 비밀번호로 로드 시도
+  void password;
   const arrayBuffer = await file.arrayBuffer();
   try {
-    // TODO: pdf-lib API 변경으로 인한 임시 처리
-    // 추후 라이브러리 문서 확인 후 수정 필요
-    const doc = await PDFDocument.load(arrayBuffer);
-    // 2. 그냥 다시 저장하면 암호가 사라진 상태로 저장됨 (pdf-lib 특성)
+    const doc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+    if (!doc.isEncrypted) {
+      throw new Error("잠금된 PDF 파일이 아닙니다.");
+    }
     return doc.save();
   } catch (e) {
     throw new Error("비밀번호가 일치하지 않거나 파일이 손상되었습니다.");
@@ -654,39 +690,40 @@ export const unlockPdf = async (
 // 6. 이미지(서명)를 PDF 특정 좌표에 합성
 export const embedImagesOnPdf = async (
   file: File,
-  images: { x: number; y: number; img: string }[] // x, y는 퍼센트(0~100)
+  images: { x: number; y: number; img: string; pageIndex: number }[]
 ): Promise<Uint8Array> => {
   const arrayBuffer = await file.arrayBuffer();
   const doc = await PDFDocument.load(arrayBuffer);
-  const page = doc.getPages()[0]; // 현재 데모는 첫 페이지만 지원 (확장 가능)
-  const { width, height } = page.getSize();
+  const pages = doc.getPages();
 
   for (const item of images) {
+    if (item.pageIndex < 0 || item.pageIndex >= pages.length) {
+      continue;
+    }
+
+    const page = pages[item.pageIndex];
+    const { width, height } = page.getSize();
     let imageEmbed;
-    // DataURL에서 Base64 데이터 추출
+
     const base64Data = item.img.split(",")[1];
     const imageBytes = Uint8Array.from(atob(base64Data), (c) =>
       c.charCodeAt(0)
     );
 
-    // PNG인지 JPG인지 판별 (보통 캔버스는 PNG)
     if (item.img.startsWith("data:image/png")) {
       imageEmbed = await doc.embedPng(imageBytes);
     } else {
       imageEmbed = await doc.embedJpg(imageBytes);
     }
 
-    // 서명 크기 조정 (너비 기준 150px 정도로 고정하거나 비율에 맞춤)
     const signWidth = 150;
     const signHeight = (imageEmbed.height / imageEmbed.width) * signWidth;
 
-    // 좌표 변환 (Web % -> PDF Point)
-    // Web: Top-Left (0,0), PDF: Bottom-Left (0,0) 이므로 Y축 반전 필요
     const pdfX = (item.x / 100) * width;
     const pdfY = height - (item.y / 100) * height;
 
     page.drawImage(imageEmbed, {
-      x: pdfX - signWidth / 2, // 중앙 정렬을 위해 오프셋 조정
+      x: pdfX - signWidth / 2,
       y: pdfY - signHeight / 2,
       width: signWidth,
       height: signHeight,
@@ -694,4 +731,114 @@ export const embedImagesOnPdf = async (
   }
 
   return doc.save();
+};
+
+/**
+ * PDF 문서 객체를 로드하여 반환 (메모리 최적화용)
+ */
+export const getPdfDocument = async (file: File): Promise<pdfjsLib.PDFDocumentProxy> => {
+  const arrayBuffer = await file.arrayBuffer();
+  return await pdfjsLib.getDocument(arrayBuffer).promise;
+};
+
+/**
+ * 특정 페이지를 Blob으로 렌더링 (메모리 최적화 및 화질 조정)
+ * @param pdf 로드된 PDF 문서 객체
+ * @param pageIndex 1-based page index
+ * @param scale 이미지 스케일 (기본 1.5 - Vision AI에 적합)
+ * @param quality JPEG 품질 (0.1 ~ 1.0)
+ */
+export const renderPageToBlob = async (
+  pdf: pdfjsLib.PDFDocumentProxy,
+  pageIndex: number,
+  scale: number = 1.5,
+  quality: number = 0.8
+): Promise<Blob | null> => {
+  const page = await pdf.getPage(pageIndex);
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+
+  if (!context) return null;
+
+  canvas.height = viewport.height;
+  canvas.width = viewport.width;
+
+  await page.render({ canvasContext: context, viewport }).promise;
+
+  return new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), "image/jpeg", quality);
+  });
+};
+
+/**
+ * 여러 페이지를 하나의 긴 수직 이미지로 병합하여 Blob으로 반환 (스마트 배치용)
+ * @param pdf 로드된 PDF 문서 객체
+ * @param pageIndices 처리할 페이지 인덱스 배열 (0-based)
+ * @param scale 이미지 스케일 (기본 1.5)
+ * @param quality JPEG 품질
+ */
+export const renderPagesToCombinedBlob = async (
+  pdf: pdfjsLib.PDFDocumentProxy,
+  pageIndices: number[],
+  scale: number = 1.5,
+  quality: number = 0.8
+): Promise<Blob | null> => {
+  if (pageIndices.length === 0) return null;
+
+  // 1. 모든 페이지의 뷰포트 정보를 먼저 가져와서 전체 캔버스 크기 계산
+  const pageInfos = await Promise.all(
+    pageIndices.map(async (idx) => {
+      const page = await pdf.getPage(idx + 1); // 1-based
+      const viewport = page.getViewport({ scale });
+      return { page, viewport };
+    })
+  );
+
+  // 전체 너비(최대값)와 전체 높이(합계) 계산
+  const maxWidth = Math.max(...pageInfos.map((p) => p.viewport.width));
+  const totalHeight = pageInfos.reduce((sum, p) => sum + p.viewport.height, 0);
+
+  // 2. 통합 캔버스 생성
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+
+  canvas.width = maxWidth;
+  canvas.height = totalHeight;
+
+  // 배경을 흰색으로 채움 (투명 배경 방지)
+  context.fillStyle = "#FFFFFF";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 3. 순차적으로 그리기
+  let currentY = 0;
+  for (const info of pageInfos) {
+    // 중앙 정렬을 위한 X 좌표 계산
+    const xOffset = (maxWidth - info.viewport.width) / 2;
+    
+    // 캔버스에 렌더링
+    await info.page.render({
+      canvasContext: context,
+      viewport: info.viewport,
+      transform: [1, 0, 0, 1, xOffset, currentY], // 변환 행렬로 위치 조정
+    }).promise;
+
+    // 페이지 사이에 구분선 그리기 (선택사항, AI 인식 도움용)
+    if (currentY > 0) {
+      context.beginPath();
+      context.moveTo(0, currentY);
+      context.lineTo(maxWidth, currentY);
+      context.strokeStyle = "#e5e7eb"; // 연한 회색
+      context.lineWidth = 2;
+      context.stroke();
+    }
+
+    currentY += info.viewport.height;
+  }
+
+  // 4. Blob 변환
+  return new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), "image/jpeg", quality);
+  });
 };
