@@ -59,6 +59,52 @@ export default defineConfig(({ mode }) => {
         },
       }),
     ],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes("node_modules")) {
+              return undefined;
+            }
+
+            if (id.includes("react") || id.includes("scheduler")) {
+              return "vendor-react";
+            }
+
+            if (id.includes("react-router-dom") || id.includes("@remix-run")) {
+              return "vendor-router";
+            }
+
+            if (
+              id.includes("pdf-lib") ||
+              id.includes("pdfjs-dist") ||
+              id.includes("path2d")
+            ) {
+              return "vendor-pdf";
+            }
+
+            if (
+              id.includes("docx") ||
+              id.includes("mammoth") ||
+              id.includes("jszip")
+            ) {
+              return "vendor-office";
+            }
+
+            if (
+              id.includes("@dnd-kit") ||
+              id.includes("lucide-react") ||
+              id.includes("file-saver")
+            ) {
+              return "vendor-ui";
+            }
+
+            return "vendor-misc";
+          },
+        },
+      },
+      chunkSizeWarningLimit: 700,
+    },
     define: {
       "process.env.API_KEY": JSON.stringify(env.GEMINI_API_KEY),
       "process.env.GEMINI_API_KEY": JSON.stringify(env.GEMINI_API_KEY),

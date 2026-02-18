@@ -114,147 +114,242 @@ import {
 } from "./src/components/ErrorBoundary";
 
 const Dashboard = () => {
+  const pdfTools = [
+    {
+      to: "/merge",
+      icon: Merge,
+      title: "Merge Files",
+      description:
+        "Combine PDFs, JPG, PNG, and other image files into one unified PDF document.",
+      colorClass: "bg-rose-500",
+    },
+    {
+      to: "/split",
+      icon: Split,
+      title: "Split PDF",
+      description: "Separate one page or a whole set for easy conversion.",
+      colorClass: "bg-orange-500",
+    },
+    {
+      to: "/pdf-to-img",
+      icon: ImageIcon,
+      title: "PDF to JPG",
+      description: "Extract images from your PDF or save each page as a separate image.",
+      colorClass: "bg-amber-500",
+    },
+    {
+      to: "/img-to-pdf",
+      icon: FileOutput,
+      title: "JPG to PDF",
+      description: "Convert your images to a PDF file in seconds.",
+      colorClass: "bg-emerald-500",
+    },
+    {
+      to: "/page-numbers",
+      icon: Hash,
+      title: "Page Numbers",
+      description: "Add page numbers into your PDF documents easily.",
+      colorClass: "bg-cyan-500",
+    },
+    {
+      to: "/annotate",
+      icon: PenTool,
+      title: "Annotate PDF",
+      description: "Draw, type and add notes to your PDF documents.",
+      colorClass: "bg-blue-600",
+    },
+    {
+      to: "/ocr",
+      icon: Search,
+      title: "OCR Reader",
+      description: "Recognize text in PDFs and images using advanced AI.",
+      colorClass: "bg-violet-600",
+    },
+    {
+      to: "/compress",
+      icon: Minimize2,
+      title: "Compress PDF",
+      description: "Reduce file size while maintaining quality.",
+      colorClass: "bg-rose-600",
+    },
+    {
+      to: "/organize",
+      icon: Grid,
+      title: "Organize PDF",
+      description: "Rearrange, rotate, and delete pages visually.",
+      colorClass: "bg-indigo-500",
+    },
+    {
+      to: "/watermark",
+      icon: Stamp,
+      title: "Watermark",
+      description: "Add text or image watermarks for security.",
+      colorClass: "bg-blue-400",
+    },
+    {
+      to: "/protect",
+      icon: Shield,
+      title: "Protect PDF",
+      description: "Encrypt your PDF with a password.",
+      colorClass: "bg-gray-700",
+    },
+    {
+      to: "/unlock",
+      icon: Unlock,
+      title: "Unlock PDF",
+      description: "Unlock password-protected PDF files.",
+      colorClass: "bg-teal-600",
+    },
+    {
+      to: "/sign",
+      icon: Type,
+      title: "Sign & Stamp",
+      description: "Add signatures easily.",
+      colorClass: "bg-emerald-600",
+    },
+  ];
+
+  const officeTools = [
+    {
+      to: "/pdf-to-docx",
+      icon: FileType,
+      title: "PDF to Word",
+      description: "Convert PDF files into editable DOCX documents.",
+      colorClass: "bg-blue-700",
+    },
+    {
+      to: "/docx-to-pdf",
+      icon: FileType,
+      title: "Word to PDF",
+      description: "Generate high-quality PDF files from DOCX documents.",
+      colorClass: "bg-indigo-600",
+    },
+    {
+      to: "/pdf-to-md",
+      icon: FileText,
+      title: "PDF to Markdown",
+      description: "Extract text from PDF as clean Markdown for editing.",
+      colorClass: "bg-purple-600",
+    },
+    {
+      to: "/epub-to-pdf",
+      icon: BookOpen,
+      title: "EPUB to PDF",
+      description: "Convert EPUB ebook files into readable PDF documents.",
+      colorClass: "bg-emerald-600",
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       <Navbar />
 
       {/* Hero Section */}
-      <section className="bg-white pt-20 pb-24 px-4 text-center border-b border-gray-100">
-        <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-6 tracking-tight">
-          Everything you need to{" "}
-          <span className="text-brand-600">manage documents</span>
-        </h1>
-        <p className="text-lg text-gray-600 max-w-2xl mx-auto mb-10">
-          Merge, split, compress, convert, rotate, unlock and watermark PDFs
-          with just a few clicks.
-        </p>
+      <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-brand-900 to-sky-900 px-4 py-20 text-white md:py-24">
+        <div className="absolute -left-24 top-10 h-56 w-56 rounded-full bg-cyan-400/20 blur-3xl" />
+        <div className="absolute -right-24 bottom-2 h-64 w-64 rounded-full bg-brand-300/20 blur-3xl" />
+        <div className="relative mx-auto max-w-7xl">
+          <div className="max-w-3xl">
+            <p className="mb-4 inline-flex rounded-full border border-white/30 bg-white/10 px-4 py-1 text-sm font-medium text-sky-100">
+              Smart PDF Toolkit for daily workflows
+            </p>
+            <h1 className="text-4xl font-extrabold tracking-tight md:text-6xl">
+              Document work, completed
+              <span className="block text-cyan-200">in a single flow</span>
+            </h1>
+            <p className="mt-6 max-w-2xl text-base text-slate-100/90 md:text-lg">
+              DocuFlow provides practical tools for conversion, editing, OCR, and
+              security. Start with the job you need and process your files quickly
+              in your browser.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link
+                to="/merge"
+                className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-slate-900 shadow-lg transition hover:-translate-y-0.5 hover:bg-slate-100"
+              >
+                Start with Merge
+              </Link>
+              <a
+                href="#usage-guide"
+                className="rounded-xl border border-white/40 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/20"
+              >
+                Usage Guide
+              </a>
+            </div>
+          </div>
+
+          <div className="mt-10 grid grid-cols-2 gap-3 md:mt-14 md:grid-cols-4">
+            <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
+              <p className="text-2xl font-bold">17+</p>
+              <p className="mt-1 text-xs text-slate-100/80">Document tools</p>
+            </div>
+            <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
+              <p className="text-2xl font-bold">OCR</p>
+              <p className="mt-1 text-xs text-slate-100/80">Image/PDF text extraction</p>
+            </div>
+            <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
+              <p className="text-2xl font-bold">EPUB</p>
+              <p className="mt-1 text-xs text-slate-100/80">Ebook conversion workflow</p>
+            </div>
+            <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
+              <p className="text-2xl font-bold">Secure</p>
+              <p className="mt-1 text-xs text-slate-100/80">Protect and unlock PDF</p>
+            </div>
+          </div>
+        </div>
       </section>
 
-      {/* Tools Grid */}
-      <section className="max-w-7xl mx-auto px-4 -mt-16 pb-20 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <ToolCard
-          to="/merge"
-          icon={Merge}
-          title="Merge Files"
-          description="Combine PDFs, JPG, PNG, and other image files into one unified PDF document."
-          colorClass="bg-rose-500"
-        />
-        <ToolCard
-          to="/split"
-          icon={Split}
-          title="Split PDF"
-          description="Separate one page or a whole set for easy conversion."
-          colorClass="bg-orange-500"
-        />
-        <ToolCard
-          to="/pdf-to-img"
-          icon={ImageIcon}
-          title="PDF to JPG"
-          description="Extract images from your PDF or save each page as a separate image."
-          colorClass="bg-amber-500"
-        />
-        <ToolCard
-          to="/img-to-pdf"
-          icon={FileOutput}
-          title="JPG to PDF"
-          description="Convert your images to a PDF file in seconds."
-          colorClass="bg-emerald-500"
-        />
-        <ToolCard
-          to="/page-numbers"
-          icon={Hash}
-          title="Page Numbers"
-          description="Add page numbers into your PDF documents easily."
-          colorClass="bg-cyan-500"
-        />
-        <ToolCard
-          to="/annotate"
-          icon={PenTool}
-          title="Annotate PDF"
-          description="Draw, type and add notes to your PDF documents."
-          colorClass="bg-blue-600"
-        />
-        <ToolCard
-          to="/ocr"
-          icon={Search}
-          title="OCR Reader"
-          description="Recognize text in PDFs and images using advanced AI."
-          colorClass="bg-violet-600"
-        />
+      <section id="usage-guide" className="mx-auto max-w-7xl px-4 py-14">
+        <div className="rounded-3xl border border-slate-200 bg-white px-6 py-8 shadow-sm md:px-8">
+          <h2 className="text-2xl font-bold text-slate-900">How to use DocuFlow</h2>
+          <p className="mt-2 text-sm text-slate-600 md:text-base">
+            1) Select a tool card, 2) upload files, 3) configure options, and 4)
+            download the result. For long tasks, progress feedback is shown in real time.
+          </p>
+          <div className="mt-5 grid gap-3 text-sm md:grid-cols-3">
+            <div className="rounded-xl bg-slate-100 px-4 py-3 text-slate-700">
+              Conversion: PDF, DOCX, EPUB, Markdown
+            </div>
+            <div className="rounded-xl bg-slate-100 px-4 py-3 text-slate-700">
+              Editing: Merge, Split, Organize, Watermark, Sign
+            </div>
+            <div className="rounded-xl bg-slate-100 px-4 py-3 text-slate-700">
+              Security: Protect/Unlock + OCR extraction
+            </div>
+          </div>
+        </div>
+      </section>
 
-        {/* NEW PDF Tools */}
-        <ToolCard
-          to="/compress"
-          icon={Minimize2}
-          title="Compress PDF"
-          description="Reduce file size while maintaining quality."
-          colorClass="bg-rose-600"
-        />
-        <ToolCard
-          to="/organize"
-          icon={Grid}
-          title="Organize PDF"
-          description="Rearrange, rotate, and delete pages visually."
-          colorClass="bg-indigo-500"
-        />
-        <ToolCard
-          to="/watermark"
-          icon={Stamp}
-          title="Watermark"
-          description="Add text or image watermarks for security."
-          colorClass="bg-blue-400"
-        />
-        <ToolCard
-          to="/protect"
-          icon={Shield}
-          title="Protect PDF"
-          description="Encrypt your PDF with a password."
-          colorClass="bg-gray-700"
-        />
-        <ToolCard
-          to="/sign"
-          icon={Type}
-          title="Sign & Stamp"
-          description="Add signatures easily."
-          colorClass="bg-emerald-600"
-        />
-        <ToolCard
-          to="/unlock"
-          icon={Unlock}
-          title="Unlock PDF"
-          description="Unlock password-protected PDF files."
-          colorClass="bg-teal-600"
-        />
+      <section className="mx-auto max-w-7xl px-4 pb-16">
+        <div className="mb-6 flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900">PDF Essential Tools</h2>
+            <p className="text-sm text-slate-600 md:text-base">
+              Frequently used editing, optimization, and security operations for PDF files.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {pdfTools.map((tool) => (
+            <ToolCard key={tool.to} {...tool} />
+          ))}
+        </div>
+      </section>
 
-        {/* NEW Office Tools */}
-        <ToolCard
-          to="/pdf-to-docx"
-          icon={FileType}
-          title="PDF to Word"
-          description="Convert to editable DOCX."
-          colorClass="bg-blue-700"
-        />
-        <ToolCard
-          to="/docx-to-pdf"
-          icon={FileType}
-          title="Word to PDF"
-          description="Convert DOCX to PDF."
-          colorClass="bg-indigo-600"
-        />
-        <ToolCard
-          to="/pdf-to-md"
-          icon={FileText}
-          title="PDF to Markdown"
-          description="Extract text from PDF as Markdown."
-          colorClass="bg-purple-600"
-        />
-        <ToolCard
-          to="/epub-to-pdf"
-          icon={BookOpen}
-          title="EPUB to PDF"
-          description="Convert EPUB ebook files into readable PDF documents."
-          colorClass="bg-emerald-600"
-        />
+      <section className="mx-auto max-w-7xl px-4 pb-20">
+        <div className="mb-6 flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900">Office & Reading Tools</h2>
+            <p className="text-sm text-slate-600 md:text-base">
+              Convert across office and reading formats for sharing and editing workflows.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {officeTools.map((tool) => (
+            <ToolCard key={tool.to} {...tool} />
+          ))}
+        </div>
       </section>
 
       <Footer />

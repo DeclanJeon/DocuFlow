@@ -77,13 +77,13 @@ export const Navbar = () => (
             href="/"
             className="text-sm font-medium text-gray-500 hover:text-brand-600 transition-colors"
           >
-            Documentation
+            Tools
           </a>
           <a
-            href="/"
+            href="/#usage-guide"
             className="text-sm font-medium text-gray-500 hover:text-brand-600 transition-colors"
           >
-            Pricing
+            Guide
           </a>
         </div>
       </div>
