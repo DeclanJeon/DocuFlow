@@ -20,7 +20,7 @@ import { ToolLayout } from "../components/Layout";
 import { getToolByRoute } from "../data/tools";
 import { FileUpload } from "../components/Shared";
 import * as pdfUtils from "../../services/pdfUtils";
-import * as geminiService from "../../services/geminiService";
+import { performOCRWithOpenRouter } from "../../services/openRouterService";
 import { Annotation } from "../../types";
 import {
   DndContext,
@@ -989,7 +989,7 @@ export const OcrTool = () => {
   
   const [ocrSteps, setOcrSteps] = useState<ProgressStep[]>([
     { id: "prep", label: "Preprocessing Image", status: "pending" },
-    { id: "ai", label: "AI Recognition (Gemini)", status: "pending" },
+    { id: "ai", label: "Cloud OCR (Gemini)", status: "pending" },
     { id: "done", label: "Finalizing", status: "pending" },
   ]);
 
@@ -1004,7 +1004,7 @@ export const OcrTool = () => {
     // Reset
     setOcrSteps([
       { id: "prep", label: "Preprocessing Image", status: "processing" },
-      { id: "ai", label: "AI Recognition (Gemini)", status: "pending" },
+      { id: "ai", label: "Cloud OCR (Gemini)", status: "pending" },
       { id: "done", label: "Finalizing", status: "pending" },
     ]);
 
@@ -1020,7 +1020,7 @@ export const OcrTool = () => {
       updateStep("prep", "completed");
       updateStep("ai", "processing");
 
-      const text = await geminiService.performOCR(fileToSend);
+      const text = await performOCRWithOpenRouter(fileToSend);
       
       updateStep("ai", "completed");
       updateStep("done", "processing");
@@ -1044,7 +1044,7 @@ export const OcrTool = () => {
       description={getToolByRoute("/ocr")?.shortDesc} 
       isProcessing={processing}
       progressSteps={ocrSteps}
-      progressLabel="AI OCR Processing"
+      progressLabel="OCR Processing"
       progressSubLabel={`Scanning ${file ? 1 : 0} file with OCR stages`}
     >
       {!file ? (
@@ -1075,7 +1075,7 @@ export const OcrTool = () => {
             {!resultText && (
               <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50 p-8 text-center">
                 <p className="text-gray-500 mb-6">
-                  Ready to scan. AI will extract text from this document.
+                  Ready to scan. OCR will extract text from this document.
                 </p>
                 <button
                   type="button"

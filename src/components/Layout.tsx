@@ -141,18 +141,18 @@ export const Navbar = () => (
           </Link>
         </div>
         <div className="flex items-center space-x-4">
-          <a
-            href="/"
+          <Link
+            to="/"
             className="text-sm font-medium text-gray-500 hover:text-brand-600 transition-colors"
           >
             Tools
-          </a>
-          <a
-            href="/#usage-guide"
+          </Link>
+          <Link
+            to="/#usage-guide"
             className="text-sm font-medium text-gray-500 hover:text-brand-600 transition-colors"
           >
             Guide
-          </a>
+          </Link>
         </div>
       </div>
     </div>

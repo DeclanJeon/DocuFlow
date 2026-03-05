@@ -25,7 +25,7 @@
 - PDF 편집: `Merge`, `Split`, `Organize`, `Compress`, `Page Numbers`, `Annotate`
 - PDF 보안: `Protect PDF`, `Unlock PDF`, `Watermark`, `Sign & Stamp`
 - 포맷 변환: `PDF ↔ DOCX`, `PDF → Markdown`, `EPUB → PDF`, `JPG ↔ PDF`
-- OCR: 이미지/PDF 기반 텍스트 추출 (OpenRouter 기반)
+- OCR: 이미지/PDF 기반 텍스트 추출 (로컬 OCR 파이프라인, 웹에서 OpenRouter 보완 경로 사용 가능)
 - 진행 상태 UI: 긴 작업에서 단계별 진행률/상태 안내
 
 ## 기술 스택
@@ -33,7 +33,7 @@
 - Frontend: `React 19`, `TypeScript`, `Vite`, `React Router`
 - UI: `Tailwind CSS`, `lucide-react`
 - 문서 처리: `pdf-lib`, `pdfjs-dist`, `docx`, `mammoth`, `jszip`
-- OCR/AI: `OpenRouter API` (기본 모델: `google/gemma-3-27b-it:free`)
+- OCR: 로컬 텍스트 추출 기본 동작 + 웹에서 OpenRouter 기반 OCR 보완 모드 사용 가능
 - Headless PDF 렌더링 서버(선택): `Express`, `Playwright`
 - PWA: `vite-plugin-pwa`, `workbox-window`
 
@@ -66,10 +66,10 @@ pnpm install
 cp .env.example .env
 ```
 
-필수/권장 변수:
+선택 변수:
 
 ```env
-# OpenRouter OCR
+# OpenRouter OCR (웹 보완 모드, 선택)
 VITE_OPENROUTER_API_KEY=your_api_key_here
 # 선택: 기본 OCR 모델
 VITE_OPENROUTER_MODEL=google/gemma-3-27b-it:free
@@ -115,7 +115,7 @@ pnpm exec playwright install chromium
 
 1. 메인 페이지에서 원하는 도구 선택
 2. 파일 업로드
-3. 옵션 설정(페이지 범위, 품질, 보안 비밀번호, OCR 모델 등)
+3. 옵션 설정(페이지 범위, 품질, 보안 비밀번호, OCR 설정/모델 등)
 4. 실행 후 결과 다운로드
 
 ### OCR 팁
@@ -157,13 +157,13 @@ DocuFlow/
 ## 배포 가이드
 
 - 정적 프론트만 배포: `pnpm build` 후 `dist/` 배포
-- OCR/OpenRouter 사용 시: 클라이언트에 `VITE_OPENROUTER_API_KEY` 제공 필요
+- OCR 고정밀 웹 모드 사용 시: `VITE_OPENROUTER_API_KEY` 설정 필요
 - Headless PDF 서버 사용 시: `server/pdf-server.mjs`를 별도 Node 런타임으로 배포
 
 ## 트러블슈팅
 
 - `OpenRouter API Key가 설정되지 않았습니다`
-  - `.env(.local)`에 `VITE_OPENROUTER_API_KEY` 확인
+  - `.env(.local)`에 `VITE_OPENROUTER_API_KEY` 확인 (웹 OCR 보완 모드 사용 시 필요)
 - `Playwright browser is missing`
   - `pnpm exec playwright install chromium` 실행
 - `/api` 호출 실패

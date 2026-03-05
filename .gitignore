@@ -31,3 +31,5 @@ metadata.json
 *.njsproj
 *.sln
 *.sw?
+
+docs

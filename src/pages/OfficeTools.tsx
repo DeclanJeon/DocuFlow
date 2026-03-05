@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   FileType,
   Printer,
   FileText,
   FileCode,
   CheckCircle,
-  AlertTriangle,
   BookOpen,
   Files,
 } from "lucide-react";
@@ -14,27 +13,13 @@ import { getToolByRoute } from "../data/tools";
 import { FileUpload } from "../components/Shared";
 import * as officeUtils from "../../services/officeUtils";
 import * as pdfUtils from "../../services/pdfUtils";
-import { extractMarkdownFromPdfWithOCR } from "../../services/pdfOCRExtractor";
-import { OcrFailureReason } from "../../services/openRouterService";
 import { ProgressStep } from "../components/ProgressSteps";
 import JSZip from "jszip";
 
 interface MarkdownResult {
   sourceName: string;
   markdown: string;
-  warning?: string;
-  hasPartialFailure?: boolean;
-  failureTags?: string[];
 }
-
-const OCR_REASON_LABELS: Record<OcrFailureReason, string> = {
-  timeout: "Timeout",
-  rate_limit: "Rate Limit",
-  server: "Server",
-  unauthorized: "Auth",
-  network: "Network",
-  unknown: "Unknown",
-};
 
 const toSafeMarkdownName = (sourceName: string) => {
   const base = sourceName.replace(/\.pdf$/i, "").trim() || "converted";
@@ -401,20 +386,11 @@ export const PdfToMdTool = () => {
   } | null>(null);
   const [results, setResults] = useState<MarkdownResult[]>([]);
   const [activeResultIndex, setActiveResultIndex] = useState(0);
-  const [useOcr, setUseOcr] = useState(false);
-  const [hasApiKey, setHasApiKey] = useState(false);
-  const [ocrSummaryWarning, setOcrSummaryWarning] = useState<string | null>(null);
   const [ocrSteps, setOcrSteps] = useState<ProgressStep[]>([
     { id: "init", label: "Preparing files", status: "pending" },
     { id: "ocr", label: "Converting PDFs", status: "pending" },
     { id: "finalize", label: "Generating Markdown", status: "pending" },
   ]);
-
-  useEffect(() => {
-    const key = (import.meta as ImportMeta & { env?: Record<string, string> }).env
-      ?.VITE_OPENROUTER_API_KEY;
-    setHasApiKey(Boolean(key));
-  }, []);
 
   const updateStep = (id: string, status: ProgressStep["status"], detail?: string) => {
     setOcrSteps((prev) =>
@@ -478,41 +454,11 @@ export const PdfToMdTool = () => {
     }
   };
 
-  const retryFailedFiles = () => {
-    const failedNames = new Set(
-      results.filter((result) => result.hasPartialFailure).map((result) => result.sourceName)
-    );
-    const failedFiles = files.filter((file) => failedNames.has(file.name));
-
-    if (!failedFiles.length) {
-      setZipStatus({
-        type: "error",
-        message: "재시도할 실패 파일이 없습니다.",
-      });
-      return;
-    }
-
-    setUseOcr(true);
-    setFiles(failedFiles);
-    setResults([]);
-    setActiveResultIndex(0);
-    setOcrSummaryWarning(null);
-    setZipStatus(null);
-    window.setTimeout(() => {
-      void handleConvert(failedFiles);
-    }, 0);
-  };
-
   const handleConvert = async (targetFiles: File[] = files) => {
     if (!targetFiles.length) return;
-    if (useOcr && !hasApiKey) {
-      alert("OpenRouter API Key가 설정되지 않았습니다. .env 파일을 확인해주세요.");
-      return;
-    }
 
     setProcessing(true);
     setResults([]);
-    setOcrSummaryWarning(null);
     setActiveResultIndex(0);
     setOcrSteps([
       { id: "init", label: "Preparing files", status: "processing" },
@@ -522,57 +468,14 @@ export const PdfToMdTool = () => {
 
     try {
       updateStep("init", "completed", `${targetFiles.length} file(s) ready`);
-      updateStep(
-        "ocr",
-        "processing",
-        useOcr ? "Starting OCR conversions..." : "Extracting text from PDFs..."
-      );
+      updateStep("ocr", "processing", "Extracting text from PDFs...");
 
       const converted: MarkdownResult[] = [];
-      const warningMessages: string[] = [];
-      const reasonCounts = new Map<string, number>();
 
       for (const [index, file] of targetFiles.entries()) {
         const filePrefix = `File ${index + 1}/${targetFiles.length}: ${file.name}`;
-        let markdown = "";
-
-        if (useOcr) {
-          const ocrResult = await extractMarkdownFromPdfWithOCR(file, {}, (current, total) => {
-            const percent = Math.round((current / total) * 100);
-            updateStep(
-              "ocr",
-              "processing",
-              `${filePrefix} - page ${current}/${total} (${percent}%)`
-            );
-          });
-
-          markdown = ocrResult.markdown;
-
-          if (ocrResult.failedBatchCount > 0) {
-            const failureTags = Object.keys(ocrResult.failedReasonCounts).map(
-              (reason) =>
-                OCR_REASON_LABELS[(reason as OcrFailureReason) || "unknown"] ||
-                OCR_REASON_LABELS.unknown
-            );
-            Object.entries(ocrResult.failedReasonCounts).forEach(([reason, count]) => {
-              if (!count) return;
-              reasonCounts.set(reason, (reasonCounts.get(reason) || 0) + count);
-            });
-            const warning = `${file.name}: ${ocrResult.failedBatchCount} batch failed (pages ${ocrResult.failedBatchRanges.join(", ")})`;
-            warningMessages.push(warning);
-            converted.push({
-              sourceName: file.name,
-              markdown,
-              warning,
-              hasPartialFailure: true,
-              failureTags,
-            });
-            continue;
-          }
-        } else {
-          updateStep("ocr", "processing", `${filePrefix} - extracting text`);
-          markdown = await pdfUtils.extractTextFromPdf(file);
-        }
+        updateStep("ocr", "processing", `${filePrefix} - extracting text`);
+        const markdown = await pdfUtils.extractTextFromPdf(file);
 
         converted.push({ sourceName: file.name, markdown });
       }
@@ -580,14 +483,6 @@ export const PdfToMdTool = () => {
       updateStep("ocr", "completed", `Converted ${converted.length} file(s)`);
       updateStep("finalize", "processing", "Preparing preview and downloads");
       setResults(converted);
-      if (warningMessages.length > 0) {
-        const reasonSummary = Array.from(reasonCounts.entries())
-          .map(([reason, count]) => `${OCR_REASON_LABELS[(reason as OcrFailureReason) || "unknown"]}: ${count}`)
-          .join(", ");
-        setOcrSummaryWarning(
-          `${warningMessages.length} file(s) completed with partial OCR failures (${reasonSummary || "Unknown"}). Review warnings and retry those files.`
-        );
-      }
       setActiveResultIndex(0);
       updateStep("finalize", "completed", "Markdown output ready");
     } catch (e) {
@@ -612,7 +507,7 @@ export const PdfToMdTool = () => {
       description={getToolByRoute("/pdf-to-md")?.shortDesc}
       isProcessing={processing}
       progressSteps={ocrSteps}
-      progressLabel={useOcr ? "AI OCR Processing" : "Extracting Markdown"}
+      progressLabel="Extracting Markdown"
       progressSubLabel={`Processing ${files.length || 1} PDF file(s)`}
     >
       {!files.length ? (
@@ -637,53 +532,10 @@ export const PdfToMdTool = () => {
 
           <div className="w-full bg-white p-6 rounded-xl border border-gray-200 mb-8">
             <h4 className="font-semibold text-gray-900 mb-4">Conversion Method</h4>
-            <div className="flex gap-4 mb-4">
-              <button
-                type="button"
-                onClick={() => setUseOcr(false)}
-                className={`flex-1 py-3 px-4 rounded-xl font-medium border-2 text-sm transition-all ${
-                  !useOcr
-                    ? "border-purple-500 bg-purple-50 text-purple-700"
-                    : "border-transparent bg-gray-100 text-gray-600"
-                }`}
-              >
-                Standard Text (Fast)
-              </button>
-              <button
-                type="button"
-                onClick={() => setUseOcr(true)}
-                className={`flex-1 py-3 px-4 rounded-xl font-medium border-2 text-sm transition-all ${
-                  useOcr
-                    ? "border-purple-500 bg-purple-50 text-purple-700"
-                    : "border-transparent bg-gray-100 text-gray-600"
-                }`}
-              >
-                AI OCR (Images & Tables)
-              </button>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              OCR is not supported in PDF to Markdown. This tool only extracts embedded text from
+              the PDF.
             </div>
-
-            {useOcr && (
-              <div
-                className={`mt-2 p-3 rounded-lg text-xs ${
-                  hasApiKey
-                    ? "bg-gray-50 text-gray-500"
-                    : "bg-amber-50 text-amber-700 border border-amber-200"
-                }`}
-              >
-                <p>
-                  Uses OpenRouter OCR for scanned pages, figures, and complex
-                  layouts.
-                </p>
-                {!hasApiKey && (
-                  <div className="flex items-center gap-2 mt-2 font-semibold">
-                    <AlertTriangle size={14} />
-                    <span>
-                      API key not found. Set VITE_OPENROUTER_API_KEY in .env.
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           <button
@@ -720,18 +572,6 @@ export const PdfToMdTool = () => {
                 {downloadingZip ? "Creating ZIP..." : "Download ZIP"}
               </button>
             </div>
-            {ocrSummaryWarning && (
-              <div className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-2">
-                <p>{ocrSummaryWarning}</p>
-                <button
-                  type="button"
-                  onClick={retryFailedFiles}
-                  className="mt-2 inline-flex px-2.5 py-1 rounded bg-amber-600 text-white hover:bg-amber-700"
-                >
-                  Retry Failed Files
-                </button>
-              </div>
-            )}
             {zipStatus && (
               <p
                 className={`text-xs mb-3 ${
@@ -754,21 +594,6 @@ export const PdfToMdTool = () => {
                   }`}
                 >
                   <p className="text-sm font-medium truncate">{result.sourceName}</p>
-                  {result.failureTags && result.failureTags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {result.failureTags.map((tag) => (
-                        <span
-                          key={`${result.sourceName}-${tag}`}
-                          className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {result.warning && (
-                    <p className="text-[11px] text-amber-700 mt-1 truncate">{result.warning}</p>
-                  )}
                 </button>
               ))}
             </div>

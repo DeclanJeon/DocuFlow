@@ -9,6 +9,7 @@ import {
 interface FailedBatchDetail {
   range: string;
   reason: OcrFailureReason;
+  pageIndex: number;
 }
 
 export interface PdfOcrExtractionResult {
@@ -17,15 +18,31 @@ export interface PdfOcrExtractionResult {
   failedBatchRanges: string[];
   failedBatchDetails: FailedBatchDetail[];
   failedReasonCounts: Partial<Record<OcrFailureReason, number>>;
+  weakPageCount: number;
+  weakPageRanges: string[];
+  ocrAttemptedPages: number;
+  ocrAttemptedPageRanges: string[];
+  ocrAppliedPages: number;
+  ocrAppliedPageRanges: string[];
+  diagnosticsMessage: string;
 }
 
 const MAX_REASON_RETRIES = 2;
+const WAIT_RATE_LIMIT_MS = 2200;
+const WAIT_SERVER_MS = 1500;
+const WAIT_NETWORK_MS = 1200;
+
+const PDF_TEXT_CHAR_THRESHOLD = 20;
+const PDF_TEXT_PRINTABLE_RATIO_THRESHOLD = 0.85;
+const WEAK_OCR_CONCURRENCY = 2;
+
+const PDF_TEXT_SEPARATOR = "\n\n---\n\n";
 
 const waitByReason = async (reason: OcrFailureReason) => {
   const delayMap: Record<OcrFailureReason, number> = {
-    rate_limit: 2200,
-    server: 1500,
-    network: 1200,
+    rate_limit: WAIT_RATE_LIMIT_MS,
+    server: WAIT_SERVER_MS,
+    network: WAIT_NETWORK_MS,
     timeout: 0,
     unauthorized: 0,
     unknown: 0,
@@ -42,6 +59,111 @@ const chunkIndices = (indices: number[], size: number) => {
     chunks.push(indices.slice(i, i + size));
   }
   return chunks;
+};
+
+const normalizeText = (value: string) => value.replace(/\u0000/g, "").replace(/\s+/g, " ").trim();
+
+const isPrintableChar = (char: string) => {
+  const codePoint = char.codePointAt(0) ?? 0;
+  return (
+    char === "\n" ||
+    char === "\r" ||
+    char === "\t" ||
+    char === " " ||
+    (codePoint >= 0x20 && codePoint < 0x7f) ||
+    codePoint >= 0xa0
+  );
+};
+
+const calculatePrintableRatio = (text: string) => {
+  const normalized = normalizeText(text);
+  if (!normalized) return 0;
+
+  let printableCount = 0;
+  for (const char of normalized) {
+    if (isPrintableChar(char)) printableCount += 1;
+  }
+
+  return printableCount / normalized.length;
+};
+
+const isWeakPageText = (text: string) => {
+  const normalized = normalizeText(text);
+  if (!normalized) return true;
+  if (normalized.length < PDF_TEXT_CHAR_THRESHOLD) return true;
+  return calculatePrintableRatio(normalized) < PDF_TEXT_PRINTABLE_RATIO_THRESHOLD;
+};
+
+const toPageRange = (pageIndices: number[]) => {
+  if (pageIndices.length === 0) return [];
+
+  const sorted = [...pageIndices].sort((a, b) => a - b);
+  const ranges: string[] = [];
+  let rangeStart = sorted[0];
+  let rangeEnd = sorted[0];
+
+  for (let i = 1; i < sorted.length; i += 1) {
+    const page = sorted[i];
+    if (page === rangeEnd + 1) {
+      rangeEnd = page;
+    } else {
+      ranges.push(rangeStart === rangeEnd ? `${rangeStart + 1}` : `${rangeStart + 1}-${rangeEnd + 1}`);
+      rangeStart = page;
+      rangeEnd = page;
+    }
+  }
+
+  ranges.push(rangeStart === rangeEnd ? `${rangeStart + 1}` : `${rangeStart + 1}-${rangeEnd + 1}`);
+  return ranges;
+};
+
+const shouldUseOcrPageText = (baselineText: string, ocrText: string) => {
+  const baselineNormalized = normalizeText(baselineText);
+  const ocrNormalized = normalizeText(ocrText);
+
+  if (!ocrNormalized) return false;
+  if (calculatePrintableRatio(ocrNormalized) < 0.7) return false;
+
+  if (!baselineNormalized) {
+    return ocrNormalized.length >= PDF_TEXT_CHAR_THRESHOLD;
+  }
+
+  const minimumLength = Math.max(
+    PDF_TEXT_CHAR_THRESHOLD,
+    Math.floor(baselineNormalized.length * 0.75)
+  );
+
+  return ocrNormalized.length >= minimumLength;
+};
+
+const baselineTextToMarkdown = (text: string) => {
+  const normalized = normalizeText(text);
+  if (!normalized) return "";
+  return text.trim();
+};
+
+const extractPdfPageTexts = async (
+  pdf: Awaited<ReturnType<typeof pdfUtils.getPdfDocument>>
+) => {
+  const pageTexts: string[] = [];
+  const pageCount = pdf.numPages;
+
+  for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items
+      .map((item) => {
+        const maybeStr =
+          typeof item === "object" && item !== null && "str" in item
+            ? String((item as { str?: unknown }).str || "")
+            : "";
+        return maybeStr;
+      })
+      .join(" ");
+    pageTexts.push(pageText);
+  }
+
+  return pageTexts;
 };
 
 const renderAndOcrPageGroup = async (
@@ -123,15 +245,7 @@ const processBatchWithRecovery = async (
 };
 
 /**
- * PDF OCR 추출기 (스마트 배치 스티칭 알고리즘 적용)
- * 
- * 최적화 전략: "Smart Batch Stitching"
- * 1. 페이지를 5장씩 묶어서 하나의 긴 이미지로 만듭니다. (Batch Size = 5)
- *    - 10장을 묶으면 높이가 12,000px을 넘어 AI 모델의 입력 해상도 제한(약 2048~4096px)에 걸려
- *      강제 리사이징으로 인한 가독성 저하가 발생합니다.
- *    - 따라서 5장이 속도와 정확도 사이의 최적의 타협점(Sweet Spot)입니다.
- * 2. 이렇게 하면 API 호출 횟수가 1/5로 줄어들어 속도가 매우 빨라집니다.
- * 3. 페이지 경계에 걸친 문장도 문맥을 유지하며 해석할 수 있습니다.
+ * PDF OCR 추출기 (약한 페이지 우선 보강)
  */
 export const extractMarkdownFromPdfWithOCR = async (
   file: File,
@@ -139,105 +253,120 @@ export const extractMarkdownFromPdfWithOCR = async (
   onProgress?: (current: number, total: number) => void
 ): Promise<PdfOcrExtractionResult> => {
   try {
-    // 1. PDF 문서 로드
     const pdf = await pdfUtils.getPdfDocument(file);
     const totalPages = pdf.numPages;
-    
-    // 배치 사이즈 설정 (5장씩 묶음 - 최신 모델 성능 고려 상향 조정)
-    const BATCH_SIZE = 5;
-    const totalBatches = Math.ceil(totalPages / BATCH_SIZE);
-    
-    // 결과를 저장할 배열
-    const batchResults: string[] = new Array(totalBatches).fill("");
+
+    onProgress?.(0, totalPages);
+
+    const pageTextResults = await extractPdfPageTexts(pdf);
+    const weakPageIndices = pageTextResults
+      .map((pageText, pageIndex) => ({ pageText, pageIndex }))
+      .filter((entry) => isWeakPageText(entry.pageText))
+      .map((entry) => entry.pageIndex);
+
+    const weakPageRanges = toPageRange(weakPageIndices);
+
+    const pageMarkdowns = pageTextResults.map((text) => baselineTextToMarkdown(text));
+    const attemptedOcrRanges: number[] = [];
+    const successfulOcrRanges: number[] = [];
     const failedBatchRanges: string[] = [];
     const failedBatchDetails: FailedBatchDetail[] = [];
-    
-    // 배치 인덱스 배열 생성
-    const batchIndices = Array.from({ length: totalBatches }, (_, i) => i);
-    
-    // 동시 처리 배치 개수 (브라우저 메모리 부하 고려)
-    const CONCURRENT_BATCHES = 2;
-    
-    let completedBatches = 0;
+
+    let completedPages = totalPages - weakPageIndices.length;
+    const updateProgress = () => {
+      const safeCompletedPages = Math.min(completedPages, totalPages);
+      onProgress?.(safeCompletedPages, totalPages);
+    };
+
+    updateProgress();
 
     let authError: Error | null = null;
 
-    // 배치 단위 병렬 처리
-    for (let i = 0; i < totalBatches; i += CONCURRENT_BATCHES) {
-      if (authError) {
-        break;
-      }
+    for (let i = 0; i < weakPageIndices.length; i += WEAK_OCR_CONCURRENCY) {
+      const batch = weakPageIndices.slice(i, i + WEAK_OCR_CONCURRENCY);
+      const pageGroups = chunkIndices(batch, 1);
 
-      const currentBatchGroup = batchIndices.slice(i, i + CONCURRENT_BATCHES);
-      
-      await Promise.all(currentBatchGroup.map(async (batchIndex) => {
-        try {
-          const startPage = batchIndex * BATCH_SIZE;
-          const endPage = Math.min(startPage + BATCH_SIZE, totalPages);
-          
-          // 해당 배치에 포함될 페이지 인덱스들
-          const pageIndices = Array.from(
-            { length: endPage - startPage }, 
-            (_, k) => startPage + k
-          );
+      await Promise.all(
+        pageGroups.map(async (pageIndices) => {
+          const pageIndex = pageIndices[0];
+          if (pageIndex === undefined) return;
 
-          const batchMarkdown = await processBatchWithRecovery(pdf, pageIndices, config);
-          
-          // 결과 저장
-          batchResults[batchIndex] = batchMarkdown;
+          try {
+            const ocrText = await processBatchWithRecovery(pdf, pageIndices, config);
+            attemptedOcrRanges.push(pageIndex);
 
-        } catch (error) {
-          const reason =
-            error instanceof OpenRouterOcrError ? error.reason : ("unknown" as OcrFailureReason);
+            const baselineText = pageTextResults[pageIndex] || "";
+            const shouldUseOcr = shouldUseOcrPageText(baselineText, ocrText);
 
-          if (reason === "unauthorized") {
-            authError =
-              error instanceof Error
-                ? error
-                : new Error(
-                    "OpenRouter 인증에 실패했습니다. VITE_OPENROUTER_API_KEY와 계정 권한을 확인해주세요."
-                  );
-            return;
+            if (shouldUseOcr || !normalizeText(baselineText)) {
+              pageMarkdowns[pageIndex] = ocrText;
+              successfulOcrRanges.push(pageIndex);
+            }
+          } catch (error) {
+            const reason =
+              error instanceof OpenRouterOcrError
+                ? error.reason
+                : ("unknown" as OcrFailureReason);
+
+            if (reason === "unauthorized") {
+              authError =
+                error instanceof Error
+                  ? error
+                  : new Error(
+                      "OpenRouter 인증에 실패했습니다. VITE_OPENROUTER_API_KEY와 계정 권한을 확인해주세요."
+                    );
+              return;
+            }
+
+            const range = `${pageIndex + 1}`;
+            failedBatchRanges.push(range);
+            failedBatchDetails.push({
+              pageIndex,
+              range,
+              reason,
+            });
+          } finally {
+            completedPages += 1;
+            updateProgress();
           }
-
-          console.error(`Batch ${batchIndex + 1} failed:`, error);
-          const startPage = batchIndex * BATCH_SIZE + 1;
-          const endPage = Math.min((batchIndex + 1) * BATCH_SIZE, totalPages);
-          const range = `${startPage}-${endPage}`;
-          failedBatchRanges.push(range);
-          failedBatchDetails.push({
-            range,
-            reason,
-          });
-          batchResults[batchIndex] = "";
-        } finally {
-          completedBatches++;
-          // 진행률 업데이트
-          if (onProgress) {
-            const approximatePagesDone = Math.min(completedBatches * BATCH_SIZE, totalPages);
-            onProgress(approximatePagesDone, totalPages);
-          }
-        }
-      }));
+        })
+      );
 
       if (authError) {
         throw authError;
       }
     }
 
-    // 4. 결과 병합
     const failedReasonCounts: Partial<Record<OcrFailureReason, number>> = {};
     for (const detail of failedBatchDetails) {
-      failedReasonCounts[detail.reason] =
-        (failedReasonCounts[detail.reason] || 0) + 1;
+      failedReasonCounts[detail.reason] = (failedReasonCounts[detail.reason] || 0) + 1;
     }
 
+    const failedRanges = toPageRange(failedBatchDetails.map((detail) => detail.pageIndex));
+    const failedBatchCount = failedBatchDetails.length;
+    const attemptedCount = attemptedOcrRanges.length;
+    const appliedCount = successfulOcrRanges.length;
+    const finalMarkdown = pageMarkdowns.filter((value) => Boolean(value)).join(PDF_TEXT_SEPARATOR);
+
+    const diagnosticsMessage =
+      `OCR diagnostics: weak=${weakPageIndices.length}, ` +
+      `attempted=${attemptedCount}, ` +
+      `applied=${appliedCount}, ` +
+      `failed=${failedBatchCount}`;
+
     return {
-      markdown: batchResults.filter(Boolean).join("\n\n"),
-      failedBatchCount: failedBatchRanges.length,
-      failedBatchRanges,
+      markdown: finalMarkdown,
+      failedBatchCount,
+      failedBatchRanges: failedRanges,
       failedBatchDetails,
       failedReasonCounts,
+      weakPageCount: weakPageIndices.length,
+      weakPageRanges,
+      ocrAttemptedPages: attemptedCount,
+      ocrAttemptedPageRanges: toPageRange(attemptedOcrRanges),
+      ocrAppliedPages: appliedCount,
+      ocrAppliedPageRanges: toPageRange(successfulOcrRanges),
+      diagnosticsMessage,
     };
   } catch (error) {
     console.error("PDF OCR Conversion Error:", error);
