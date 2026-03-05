@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Stamp, Upload, Image as ImageIcon } from "lucide-react";
 import { ToolLayout } from "../components/Layout";
+import { getToolByRoute } from "../data/tools";
 import { FileUpload } from "../components/Shared";
 import * as pdfUtils from "../../services/pdfUtils";
 
@@ -116,6 +117,9 @@ export const WatermarkTool = () => {
   return (
     <ToolLayout
       title="Add Watermark"
+      icon={getToolByRoute("/watermark")?.icon}
+      iconColorClass={getToolByRoute("/watermark")?.colorClass}
+      description={getToolByRoute("/watermark")?.shortDesc}
       isProcessing={processing}
       progressLabel="Applying Watermark..."
       progressSubLabel={`Preparing and writing watermark to ${file ? 1 : 0} file`}

@@ -17,6 +17,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { ToolLayout } from "../components/Layout";
+import { getToolByRoute } from "../data/tools";
 import { FileUpload } from "../components/Shared";
 import * as pdfUtils from "../../services/pdfUtils";
 import * as geminiService from "../../services/geminiService";
@@ -187,7 +188,10 @@ export const MergePdfTool = () => {
 
   return (
     <ToolLayout 
-      title="Merge Files" 
+      title="Merge Files"
+      icon={getToolByRoute("/merge")?.icon}
+      iconColorClass={getToolByRoute("/merge")?.colorClass}
+      description={getToolByRoute("/merge")?.shortDesc} 
       isProcessing={processing}
       progressValue={progressValue}
       progressLabel="Merging Documents..."
@@ -306,7 +310,10 @@ export const SplitPdfTool = () => {
 
   return (
     <ToolLayout 
-      title="Split PDF" 
+      title="Split PDF"
+      icon={getToolByRoute("/split")?.icon}
+      iconColorClass={getToolByRoute("/split")?.colorClass}
+      description={getToolByRoute("/split")?.shortDesc} 
       isProcessing={processing}
       progressLabel="Splitting PDF..."
       progressSubLabel={`Applying ${mode} mode to ${file ? 1 : 0} file`}
@@ -420,7 +427,10 @@ export const PdfToImgTool = () => {
 
   return (
     <ToolLayout 
-      title="PDF to JPG" 
+      title="PDF to JPG"
+      icon={getToolByRoute("/pdf-to-img")?.icon}
+      iconColorClass={getToolByRoute("/pdf-to-img")?.colorClass}
+      description={getToolByRoute("/pdf-to-img")?.shortDesc} 
       isProcessing={processing}
       progressLabel="Converting PDF to Images..."
       progressSubLabel={`Rasterizing ${file ? 1 : 0} document into page images`}
@@ -578,7 +588,10 @@ export const ImgToPdfTool = () => {
 
   return (
     <ToolLayout 
-      title="JPG to PDF" 
+      title="JPG to PDF"
+      icon={getToolByRoute("/img-to-pdf")?.icon}
+      iconColorClass={getToolByRoute("/img-to-pdf")?.colorClass}
+      description={getToolByRoute("/img-to-pdf")?.shortDesc} 
       isProcessing={processing}
       progressValue={progressValue}
       progressLabel="Converting Images to PDF..."
@@ -687,7 +700,10 @@ export const PageNumberTool = () => {
 
   return (
     <ToolLayout 
-      title="Add Page Numbers" 
+      title="Add Page Numbers"
+      icon={getToolByRoute("/page-numbers")?.icon}
+      iconColorClass={getToolByRoute("/page-numbers")?.colorClass}
+      description={getToolByRoute("/page-numbers")?.shortDesc} 
       isProcessing={processing}
       progressLabel="Adding Page Numbers..."
       progressSubLabel={`Updating ${file ? 1 : 0} PDF with numbered footer`}
@@ -817,7 +833,10 @@ export const AnnotateTool = () => {
 
   return (
     <ToolLayout 
-      title="Annotate Document" 
+      title="Annotate Document"
+      icon={getToolByRoute("/annotate")?.icon}
+      iconColorClass={getToolByRoute("/annotate")?.colorClass}
+      description={getToolByRoute("/annotate")?.shortDesc} 
       isProcessing={processing}
       progressLabel="Saving Annotations..."
       progressSubLabel={`Committing ${annotations.length || 1} annotation item(s)`}
@@ -1019,7 +1038,10 @@ export const OcrTool = () => {
 
   return (
     <ToolLayout 
-      title="OCR Text Extractor" 
+      title="OCR Text Extractor"
+      icon={getToolByRoute("/ocr")?.icon}
+      iconColorClass={getToolByRoute("/ocr")?.colorClass}
+      description={getToolByRoute("/ocr")?.shortDesc} 
       isProcessing={processing}
       progressSteps={ocrSteps}
       progressLabel="AI OCR Processing"
@@ -1121,7 +1143,10 @@ export const CompressPdfTool = () => {
 
   return (
     <ToolLayout 
-      title="Compress PDF" 
+      title="Compress PDF"
+      icon={getToolByRoute("/compress")?.icon}
+      iconColorClass={getToolByRoute("/compress")?.colorClass}
+      description={getToolByRoute("/compress")?.shortDesc} 
       isProcessing={processing}
       progressLabel="Compressing PDF..."
       progressSubLabel={`Optimizing ${file ? 1 : 0} file at ${Math.round((1 - quality) * 100)}% level`}
@@ -1320,7 +1345,10 @@ export const OrganizePdfTool = () => {
 
   return (
     <ToolLayout 
-      title="Organize PDF" 
+      title="Organize PDF"
+      icon={getToolByRoute("/organize")?.icon}
+      iconColorClass={getToolByRoute("/organize")?.colorClass}
+      description={getToolByRoute("/organize")?.shortDesc} 
       isProcessing={processing}
       progressLabel="Saving PDF..."
       progressSubLabel={`Writing ${pages.length || 1} page operation(s)`}

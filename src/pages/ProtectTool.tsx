@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Lock, Unlock, FileText } from "lucide-react";
 import { ToolLayout } from "../components/Layout";
+import { getToolByRoute } from "../data/tools";
 import { FileUpload } from "../components/Shared";
 import * as pdfUtils from "../../services/pdfUtils";
 
@@ -57,6 +58,9 @@ export const ProtectTool = () => {
   return (
     <ToolLayout
       title="Protect PDF"
+      icon={getToolByRoute("/protect")?.icon}
+      iconColorClass={getToolByRoute("/protect")?.colorClass}
+      description={getToolByRoute("/protect")?.shortDesc}
       isProcessing={processing}
       progressLabel="Encrypting PDF..."
       progressSubLabel="Securing 1 file with password protection"
@@ -173,6 +177,9 @@ export const UnlockTool = () => {
   return (
     <ToolLayout
       title="Unlock PDF"
+      icon={getToolByRoute("/unlock")?.icon}
+      iconColorClass={getToolByRoute("/unlock")?.colorClass}
+      description={getToolByRoute("/unlock")?.shortDesc}
       isProcessing={processing}
       progressLabel="Unlocking PDF..."
       progressSubLabel="Validating password and exporting 1 file"

@@ -10,6 +10,7 @@ import {
   Files,
 } from "lucide-react";
 import { ToolLayout } from "../components/Layout";
+import { getToolByRoute } from "../data/tools";
 import { FileUpload } from "../components/Shared";
 import * as officeUtils from "../../services/officeUtils";
 import * as pdfUtils from "../../services/pdfUtils";
@@ -70,7 +71,10 @@ export const PdfToDocxTool = () => {
 
   return (
     <ToolLayout 
-      title="PDF to Word" 
+      title="PDF to Word"
+      icon={getToolByRoute("/pdf-to-docx")?.icon}
+      iconColorClass={getToolByRoute("/pdf-to-docx")?.colorClass}
+      description={getToolByRoute("/pdf-to-docx")?.shortDesc} 
       isProcessing={processing}
       progressValue={progressValue}
       progressLabel="Converting PDF to Word..."
@@ -196,7 +200,10 @@ export const DocxToPdfTool = () => {
 
   return (
     <ToolLayout 
-      title="Word to PDF" 
+      title="Word to PDF"
+      icon={getToolByRoute("/docx-to-pdf")?.icon}
+      iconColorClass={getToolByRoute("/docx-to-pdf")?.colorClass}
+      description={getToolByRoute("/docx-to-pdf")?.shortDesc} 
       isProcessing={processing}
       progressLabel="Converting Word to PDF..."
       progressSubLabel={`Rendering ${file ? 1 : 0} DOCX into print-ready layout`}
@@ -318,6 +325,9 @@ export const EpubToPdfTool = () => {
   return (
     <ToolLayout
       title="EPUB to PDF"
+      icon={getToolByRoute("/epub-to-pdf")?.icon}
+      iconColorClass={getToolByRoute("/epub-to-pdf")?.colorClass}
+      description={getToolByRoute("/epub-to-pdf")?.shortDesc}
       isProcessing={processing}
       progressValue={progressValue}
       progressEtaSeconds={progressEtaSeconds}
@@ -597,6 +607,9 @@ export const PdfToMdTool = () => {
   return (
     <ToolLayout
       title="PDF to Markdown"
+      icon={getToolByRoute("/pdf-to-md")?.icon}
+      iconColorClass={getToolByRoute("/pdf-to-md")?.colorClass}
+      description={getToolByRoute("/pdf-to-md")?.shortDesc}
       isProcessing={processing}
       progressSteps={ocrSteps}
       progressLabel={useOcr ? "AI OCR Processing" : "Extracting Markdown"}

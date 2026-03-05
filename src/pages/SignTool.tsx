@@ -7,6 +7,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { ToolLayout } from "../components/Layout";
+import { getToolByRoute } from "../data/tools";
 import { FileUpload } from "../components/Shared";
 import * as pdfUtils from "../../services/pdfUtils";
 
@@ -302,6 +303,9 @@ export const SignTool = () => {
   return (
     <ToolLayout
       title="Sign PDF"
+      icon={getToolByRoute("/sign")?.icon}
+      iconColorClass={getToolByRoute("/sign")?.colorClass}
+      description={getToolByRoute("/sign")?.shortDesc}
       isProcessing={processing}
       progressLabel="Preparing Signed PDF..."
       progressSubLabel={`Applying ${placedSigns.length || 1} signature item(s)`}
