@@ -1,6 +1,6 @@
 import React, { ComponentType, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { FileText, ChevronLeft, Loader2 } from "lucide-react";
+import { FileText } from "lucide-react";
 import { TOOL_GROUPS } from "../data/tools";
 
 import {
@@ -171,6 +171,9 @@ export const Footer = () => (
 
 interface ToolLayoutProps {
   title: string;
+  description?: string;
+  icon?: ComponentType<{ size?: number; className?: string }>;
+  iconColorClass?: string;
   children: React.ReactNode;
   isProcessing?: boolean;
   progressSteps?: ProgressStep[];
@@ -182,6 +185,9 @@ interface ToolLayoutProps {
 
 export const ToolLayout = ({
   title,
+  description,
+  icon,
+  iconColorClass,
   children,
   isProcessing,
   progressSteps,
@@ -290,49 +296,39 @@ export const ToolLayout = ({
   ]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <Navbar />
-      <div className="flex-1 max-w-5xl w-full mx-auto px-4 py-12">
-        <div className="flex items-center mb-8">
-          <Link
-            to="/"
-            className="p-2 rounded-full hover:bg-gray-200 transition-colors mr-4"
-          >
-            <ChevronLeft size={24} className="text-gray-600" />
-          </Link>
-          <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
+    <div className="min-h-full flex flex-col">
+      {/* Tool Header */}
+      <div className="px-8 pt-8 pb-6 border-b border-slate-200 bg-white">
+        <div className="max-w-5xl">
+          {icon && (
+            <div className={`inline-flex w-10 h-10 rounded-xl items-center justify-center mb-3 ${iconColorClass || "bg-blue-600"}`}>
+              {React.createElement(icon, { size: 20, className: "text-white" })}
+            </div>
+          )}
+          <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
+          {description && (
+            <p className="mt-1 text-sm text-slate-500">{description}</p>
+          )}
         </div>
+      </div>
 
-        <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-8 min-h-[500px] relative overflow-hidden">
+      {/* Content */}
+      <div className="flex-1 relative px-8 py-8">
+        <div className="max-w-5xl">
           {isProcessing && (
-            <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center rounded-3xl animate-in fade-in duration-300">
+            <div className="absolute inset-0 bg-slate-100/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center animate-in fade-in duration-300">
               {progressSteps ? (
-                <ProgressSteps
-                  steps={progressSteps}
-                  title={progressLabel}
-                  insight={insight}
-                />
+                <ProgressSteps steps={progressSteps} title={progressLabel} insight={insight} />
               ) : progressValue !== undefined ? (
-                <SimpleProgressBar 
-                  progress={progressValue} 
-                  label={progressLabel} 
-                  subLabel={progressSubLabel} 
-                  insight={insight}
-                />
+                <SimpleProgressBar progress={progressValue} label={progressLabel} subLabel={progressSubLabel} insight={insight} />
               ) : (
-                <SimpleProgressBar
-                  progress={insight?.progressPercent || 12}
-                  label={progressLabel || "Processing..."}
-                  subLabel={progressSubLabel}
-                  insight={insight}
-                />
+                <SimpleProgressBar progress={insight?.progressPercent || 12} label={progressLabel || "Processing..."} subLabel={progressSubLabel} insight={insight} />
               )}
             </div>
           )}
           {children}
         </div>
       </div>
-      <Footer />
     </div>
   );
 };

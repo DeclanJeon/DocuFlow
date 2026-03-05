@@ -45,28 +45,40 @@ export const FileUpload = ({
   multiple?: boolean;
   description?: string;
 }) => {
+  const [isDragging, setIsDragging] = React.useState(false);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       onFilesSelected(Array.from(e.target.files));
     }
   };
 
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files: File[] = Array.from(e.dataTransfer.files);
+    if (files.length > 0) onFilesSelected(files);
+  };
+
   const getSupportedFormats = (acceptStr: string) => {
-    const formats = acceptStr.split(",");
-    return formats
-      .map((format) => {
-        const cleanFormat = format.trim().replace(".", "").toUpperCase();
-        if (format === "image/*") return "Images (JPG, PNG, etc.)";
-        if (format === ".pdf") return "PDF";
-        if (format === ".docx") return "DOCX";
-        if (format === ".epub") return "EPUB";
-        return cleanFormat;
-      })
-      .join(", ");
+    return acceptStr.split(",").map((f) => {
+      const c = f.trim().replace(".", "").toUpperCase();
+      if (f === "image/*") return "JPG, PNG, GIF…";
+      return c;
+    }).join(" · ");
   };
 
   return (
-    <div className="w-full h-64 border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center bg-gray-50 hover:bg-brand-50 hover:border-brand-300 transition-all cursor-pointer group relative overflow-hidden">
+    <div
+      className={`relative w-full border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all duration-200 py-16 ${
+        isDragging
+          ? "border-blue-400 bg-blue-50 scale-[1.01]"
+          : "border-slate-200 bg-slate-50 hover:border-blue-300 hover:bg-blue-50/50"
+      }`}
+      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+      onDragLeave={() => setIsDragging(false)}
+      onDrop={handleDrop}
+    >
       <input
         type="file"
         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
@@ -74,13 +86,13 @@ export const FileUpload = ({
         accept={accept}
         multiple={multiple}
       />
-      <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm mb-4 group-hover:scale-110 transition-transform">
-        <UploadCloud size={32} className="text-brand-500" />
+      <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-4 transition-all duration-200 ${isDragging ? "bg-blue-500 scale-110" : "bg-white shadow-md border border-slate-100"}`}>
+        <UploadCloud size={32} className={isDragging ? "text-white" : "text-blue-500"} />
       </div>
-      <p className="text-lg font-semibold text-gray-700 mb-1">
-        Click to upload or drag and drop
+      <p className="text-base font-semibold text-slate-700 mb-1">
+        {isDragging ? "Drop files here" : "Click to upload or drag and drop"}
       </p>
-      <p className="text-sm text-gray-400">
+      <p className="text-sm text-slate-400">
         {description || `Supported: ${getSupportedFormats(accept)}`}
       </p>
     </div>
