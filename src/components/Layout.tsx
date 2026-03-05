@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import React, { ComponentType, useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { FileText, ChevronLeft, Loader2 } from "lucide-react";
+import { TOOL_GROUPS } from "../data/tools";
+
 import {
   ProgressSteps,
   ProgressStep,
@@ -56,6 +58,72 @@ const pickTotalFromText = (text?: string) => {
   const parsed = Number.parseInt(match[1], 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return parsed;
+};
+
+export const Sidebar = () => {
+  const location = useLocation();
+
+  return (
+    <aside className="w-60 shrink-0 flex flex-col bg-[#0f2344] h-screen sticky top-0 overflow-y-auto">
+      {/* Brand */}
+      <div className="px-5 py-5 border-b border-white/10">
+        <Link to="/" className="flex items-center gap-2.5">
+          <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+            <FileText size={18} className="text-white" strokeWidth={2.5} />
+          </div>
+          <span className="text-white font-bold text-lg tracking-tight">DocuFlow</span>
+        </Link>
+      </div>
+
+      {/* Tool Groups */}
+      <nav className="flex-1 px-3 py-4 space-y-6">
+        {TOOL_GROUPS.map((group) => (
+          <div key={group.label}>
+            <p className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+              {group.label}
+            </p>
+            <ul className="space-y-0.5">
+              {group.tools.map((tool) => {
+                const isActive = location.pathname === tool.to;
+                const Icon = tool.icon;
+                return (
+                  <li key={tool.to}>
+                    <Link
+                      to={tool.to}
+                      className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-sm transition-all ${
+                        isActive
+                          ? "bg-blue-600/30 text-white border-l-2 border-blue-400 pl-[6px]"
+                          : "text-slate-300 hover:bg-white/5 hover:text-white"
+                      }`}
+                    >
+                      <Icon size={15} className={isActive ? "text-blue-300" : "text-slate-400"} />
+                      <span className="font-medium">{tool.title}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </nav>
+
+      {/* Footer */}
+      <div className="px-5 py-3 border-t border-white/10">
+        <p className="text-[10px] text-slate-500">© 2025 DocuFlow</p>
+      </div>
+    </aside>
+  );
+};
+
+export const AppShell = ({ children }: { children: React.ReactNode }) => {
+  return (
+    <div className="flex h-screen bg-slate-100 overflow-hidden">
+      <Sidebar />
+      <main className="flex-1 overflow-y-auto">
+        {children}
+      </main>
+    </div>
+  );
 };
 
 export const Navbar = () => (
