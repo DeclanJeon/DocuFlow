@@ -33,3 +33,4 @@ metadata.json
 *.sw?
 
 docs
+deploy.*
