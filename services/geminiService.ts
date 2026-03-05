@@ -1,6 +1,19 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Lazy initialization — do NOT instantiate at module level in a browser environment.
+// process.env.API_KEY is undefined in Vite; key is read only when performOCR is called.
+let _ai: GoogleGenAI | null = null;
+
+function getAI(): GoogleGenAI {
+  if (!_ai) {
+    const apiKey = typeof process !== "undefined" ? process.env.API_KEY : undefined;
+    if (!apiKey) {
+      throw new Error("Gemini API key is not set. Set the API_KEY environment variable.");
+    }
+    _ai = new GoogleGenAI({ apiKey });
+  }
+  return _ai;
+}
 
 export const performOCR = async (file: File): Promise<string> => {
   try {
@@ -11,7 +24,7 @@ export const performOCR = async (file: File): Promise<string> => {
 
     const model = 'gemini-2.5-flash';
 
-    const response = await ai.models.generateContent({
+    const response = await getAI().models.generateContent({
       model: model,
       contents: {
         parts: [

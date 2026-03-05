@@ -228,7 +228,7 @@ export const SignTool = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleCanvasClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (!selectedSig) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;

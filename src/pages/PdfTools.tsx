@@ -785,7 +785,7 @@ export const AnnotateTool = () => {
     }
   }, [file]);
 
-  const handleImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleImageClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (newAnnotation) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
