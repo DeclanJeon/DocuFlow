@@ -198,7 +198,7 @@ export const MergePdfTool = () => {
       progressSubLabel={`Combining ${files.length} files into a single PDF`}
     >
       {files.length === 0 ? (
-        <div className="text-center">
+        <div className="max-w-2xl mx-auto text-center">
           <FileUpload
             onFilesSelected={setFiles}
             accept=".pdf,image/*"
@@ -598,7 +598,7 @@ export const ImgToPdfTool = () => {
       progressSubLabel={`Processing ${files.length} images`}
     >
       {files.length === 0 ? (
-        <div className="text-center">
+        <div className="max-w-2xl mx-auto text-center">
           <FileUpload onFilesSelected={setFiles} accept="image/*" multiple />
           <div className="mt-6 p-4 bg-emerald-50 rounded-xl border border-emerald-100">
             <p className="text-sm text-emerald-700">

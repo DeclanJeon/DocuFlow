@@ -70,7 +70,7 @@ export const FileUpload = ({
 
   return (
     <div
-      className={`relative w-full border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all duration-200 py-16 ${
+      className={`relative max-w-2xl mx-auto border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all duration-200 py-16 ${
         isDragging
           ? "border-blue-400 bg-blue-50 scale-[1.01]"
           : "border-slate-200 bg-slate-50 hover:border-blue-300 hover:bg-blue-50/50"

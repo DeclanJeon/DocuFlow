@@ -299,7 +299,7 @@ export const ToolLayout = ({
     <div className="min-h-full flex flex-col">
       {/* Tool Header */}
       <div className="px-8 pt-8 pb-6 border-b border-slate-200 bg-white">
-        <div className="max-w-5xl">
+        <div className="max-w-5xl mx-auto">
           {icon && (
             <div className={`inline-flex w-10 h-10 rounded-xl items-center justify-center mb-3 ${iconColorClass || "bg-blue-600"}`}>
               {React.createElement(icon, { size: 20, className: "text-white" })}
@@ -314,7 +314,7 @@ export const ToolLayout = ({
 
       {/* Content */}
       <div className="flex-1 relative px-8 py-8">
-        <div className="max-w-5xl">
+        <div className="max-w-5xl mx-auto">
           {isProcessing && (
             <div className="absolute inset-0 bg-slate-100/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center animate-in fade-in duration-300">
               {progressSteps ? (
