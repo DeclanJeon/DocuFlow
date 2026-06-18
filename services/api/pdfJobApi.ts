@@ -78,10 +78,10 @@ export const compressPdfOnServer = async (
   return submitPdfJob("/api/pdf/compress", formData, "Server PDF compression failed.");
 };
 
-export const createSearchablePdfOnServer = async (file: File, language = "kor+eng") => {
+export const createSearchablePdfOnServer = async (file: File, language?: string) => {
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("language", language);
+  if (language) formData.append("language", language);
   return submitPdfJob("/api/ocr/searchable-pdf", formData, "Server searchable PDF OCR failed.");
 };
 

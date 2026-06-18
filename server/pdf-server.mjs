@@ -35,6 +35,9 @@ const MULTIPART_OVERHEAD_LIMIT = 1024 * 1024;
 const PROCESS_TIMEOUT_MS = 120_000;
 const COMPLETE = new Set(["completed", "failed", "expired"]);
 const COMPRESS_PRESETS = new Set(["screen", "ebook", "printer", "prepress"]);
+const PREFERRED_TESSERACT_LANGUAGES = ["kor", "eng", "chi_sim", "chi_tra"];
+const REQUIRED_SEARCHABLE_LANGUAGES = ["kor", "eng"];
+
 
 app.use(express.json({ limit: "60mb" }));
 
@@ -109,6 +112,29 @@ const commandAvailable = (command, args = ["--version"], timeout = 5000) =>
       });
     });
   });
+
+const listTesseractLanguages = async () => {
+  try {
+    const { stdout } = await execFileChecked("tesseract", ["--list-langs"], { timeout: 15_000 });
+    return new Set(
+      String(stdout || "")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("List of available languages"))
+    );
+  } catch {
+    return new Set();
+  }
+};
+
+const resolveCjkOcrLanguages = async () => {
+  const available = await listTesseractLanguages();
+  const selected = PREFERRED_TESSERACT_LANGUAGES.filter((language) => available.has(language));
+  for (const required of REQUIRED_SEARCHABLE_LANGUAGES) {
+    if (!selected.includes(required)) selected.push(required);
+  }
+  return selected.join("+");
+};
 
 const execFileChecked = (command, args, options = {}) =>
   new Promise((resolve, reject) => {
@@ -655,7 +681,7 @@ const runSearchablePdfJob = async (job, fields, file) => {
 
   const language = typeof fields.language === "string" && fields.language.trim()
     ? fields.language.trim()
-    : "kor+eng";
+    : await resolveCjkOcrLanguages();
   const optimize = typeof fields.optimize === "string" ? fields.optimize : "1";
   const outputPath = path.join(job.jobDir, "searchable.pdf");
   const tempOutput = path.join(job.jobDir, "searchable.tmp.pdf");
@@ -767,6 +793,12 @@ app.get("/api/ready", async (_req, res) => {
     commandAvailable(PYTHON_PATH, ["-c", "import pypdf, pdfminer, pdfplumber"]),
     commandAvailable(SOFFICE_PATH, ["--version"]),
   ]);
+  const tesseractLanguages = await listTesseractLanguages();
+  const cjkOcrLanguages = PREFERRED_TESSERACT_LANGUAGES.filter((language) => tesseractLanguages.has(language));
+  for (const required of REQUIRED_SEARCHABLE_LANGUAGES) {
+    if (!cjkOcrLanguages.includes(required)) cjkOcrLanguages.push(required);
+  }
+
   const pdftomdScriptExists = fs.existsSync(PDFTOMD_SCRIPT_PATH);
   const pdftomd = {
     requiredFor: ["/api/convert/pdf-to-markdown"],
@@ -776,10 +808,11 @@ app.get("/api/ready", async (_req, res) => {
   };
   const ocr = {
     requiredFor: ["/api/convert/pdf-to-markdown", "/api/ocr/searchable-pdf"],
-    tesseract,
+    tesseract: { ...tesseract, languages: Array.from(tesseractLanguages).sort() },
     rapidocr,
     pdf2image,
     poppler: { pdftoppm },
+    defaultLanguages: cjkOcrLanguages.join("+"),
     availableEngines: [
       tesseract.available && pdf2image.available && pdftoppm.available ? "tesseract" : undefined,
       rapidocr.available && pdf2image.available && pdftoppm.available ? "rapidocr" : undefined,
@@ -790,7 +823,7 @@ app.get("/api/ready", async (_req, res) => {
     available: ocrmypdf.available && tesseract.available,
     command: OCRMYPDF_PATH,
     detail: ocrmypdf.available ? ocrmypdf.detail : "ocrmypdf is required to preserve the original PDF layout while adding a searchable OCR text layer.",
-    pipeline: { ocrmypdf, tesseract },
+    pipeline: { ocrmypdf, tesseract: { ...tesseract, languages: Array.from(tesseractLanguages).sort() } },
   };
   const hwpToPdf = {
     requiredFor: ["/api/convert/hwp-to-pdf"],

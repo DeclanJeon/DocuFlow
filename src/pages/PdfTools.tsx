@@ -1052,7 +1052,7 @@ export const OcrTool = () => {
       updateStep("server", "processing");
 
       if (outputMode === "searchable-pdf") {
-        const job = await createSearchablePdfOnServer(fileToSend, "kor+eng");
+        const job = await createSearchablePdfOnServer(fileToSend);
         const completed = await pollCompletedPdfJob(job.jobId, job.downloadToken, () => undefined, 1000);
         const resultBlob = await downloadCompletedPdfJob({
           ...completed,
@@ -1104,7 +1104,7 @@ export const OcrTool = () => {
       title="Internal OCR Text Extractor"
       icon={getToolByRoute("/ocr")?.icon}
       iconColorClass={getToolByRoute("/ocr")?.colorClass}
-      description="Extract text with DocuFlow's internal Tesseract OCR or preserve the original layout as a searchable PDF."
+      description="Extract Korean, Chinese, and English text with DocuFlow's internal Tesseract OCR or preserve the original layout as a searchable PDF."
       isProcessing={processing}
       progressSteps={ocrSteps}
       progressLabel="Internal OCR Processing"
@@ -1148,7 +1148,7 @@ export const OcrTool = () => {
                 }`}
               >
                 <p className="text-sm font-bold">Text / Markdown</p>
-                <p className="mt-1 text-xs">Extract recognized text for copy/paste or Markdown workflows.</p>
+                <p className="mt-1 text-xs">Extract Korean/Chinese/English text for copy/paste or Markdown workflows.</p>
               </button>
               <button
                 type="button"
@@ -1169,8 +1169,8 @@ export const OcrTool = () => {
               <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50 p-8 text-center">
                 <p className="text-gray-500 mb-2">
                   {outputMode === "searchable-pdf"
-                    ? "Ready to preserve the original layout with OCRmyPDF."
-                    : "Ready to scan with DocuFlow's internal Tesseract OCR."}
+                    ? "Ready to preserve the original layout with OCRmyPDF and CJK OCR."
+                    : "Ready to scan with DocuFlow's internal Korean/Chinese/English Tesseract OCR."}
                 </p>
                 <p className="text-xs text-gray-400 mb-6">
                   {outputMode === "searchable-pdf"
