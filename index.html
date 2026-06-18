@@ -3,7 +3,60 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DocuFlow - Smart PDF Tools</title>
+
+    <title>DocuFlow | 무료 PDF 변환·편집·OCR·보안 문서 도구</title>
+    <meta name="title" content="DocuFlow | 무료 PDF 변환·편집·OCR·보안 문서 도구" />
+    <meta name="description" content="DocuFlow는 PDF 병합, 분할, 압축, OCR, Markdown 변환, HWP/HWPX 변환, 암호 보호, 잠금 해제, 개인정보 검사, 보안 처리, 도장·서명을 무료로 제공하는 문서 처리 도구입니다." />
+    <meta name="keywords" content="DocuFlow, 무료 PDF 도구, PDF 변환, PDF 편집, PDF 병합, PDF 분할, PDF 압축, PDF OCR, PDF Markdown 변환, HWP PDF 변환, PDF HWP 변환, PDF 암호, PDF 잠금 해제, 개인정보 보안 처리, 도장 PDF" />
+    <meta name="author" content="DocuFlow" />
+    <meta name="application-name" content="DocuFlow" />
+    <meta name="generator" content="DocuFlow" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow" />
+    <meta name="bingbot" content="index, follow" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="theme-color" content="#4F46E5" />
+    <meta name="color-scheme" content="light" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <link rel="canonical" href="https://docuflow.ponslink.com/" />
+    <link rel="alternate" href="https://docuflow.ponslink.com/" hreflang="ko" />
+    <link rel="alternate" href="https://docuflow.ponslink.com/" hreflang="x-default" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="mask-icon" href="/maskable-icon.svg" color="#4F46E5" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="robots" href="/robots.txt" />
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="DocuFlow" />
+    <meta property="og:locale" content="ko_KR" />
+    <meta property="og:url" content="https://docuflow.ponslink.com/" />
+    <meta property="og:title" content="DocuFlow | 무료 PDF 변환·편집·OCR·보안 문서 도구" />
+    <meta property="og:description" content="PDF 병합, 분할, 압축, OCR, Markdown 변환, HWP/HWPX 변환, 암호 보호, 보안 처리, 도장·서명을 무료로 처리하세요." />
+    <meta property="og:image" content="https://docuflow.ponslink.com/og-image.png" />
+    <meta property="og:image:secure_url" content="https://docuflow.ponslink.com/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="DocuFlow 무료 PDF 문서 도구: 변환, 편집, OCR, 보안 처리" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://docuflow.ponslink.com/" />
+    <meta name="twitter:title" content="DocuFlow | 무료 PDF 변환·편집·OCR·보안 문서 도구" />
+    <meta name="twitter:description" content="PDF 변환, 편집, OCR, HWP/HWPX 변환, 보안 처리까지 무료로 제공하는 문서 도구입니다." />
+    <meta name="twitter:image" content="https://docuflow.ponslink.com/og-image.png" />
+    <meta name="twitter:image:alt" content="DocuFlow 무료 PDF 문서 도구" />
+
+    <meta name="geo.region" content="KR" />
+    <meta name="geo.placename" content="South Korea" />
+    <meta name="ICBM" content="37.5665, 126.9780" />
+
+    <meta name="ai-summary" content="DocuFlow is a free PDF and document workflow app for PDF conversion, editing, OCR, compression, password protection, unlock, redaction, privacy scanning, stamp/signature insertion, and HWP/HWPX conversion." />
+    <meta name="answer-engine" content="DocuFlow provides free document tools for PDF merge, split, compress, OCR, Markdown conversion, HWP/HWPX conversion, protection, unlock, redaction, privacy scan, stamps, signatures, watermarks, and page numbers." />
+    <meta name="llms-txt" content="https://docuflow.ponslink.com/llms.txt" />
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
@@ -30,42 +83,117 @@
     <style>
       body {
         font-family: 'Pretendard', sans-serif;
-        background-color: #f8fafc;
+        background-color: #ffffff;
       }
-      /* Custom scrollbar */
       ::-webkit-scrollbar {
         width: 8px;
         height: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: #f1f1f1; 
+        background: #f3f4f6;
       }
       ::-webkit-scrollbar-thumb {
-        background: #cbd5e1; 
+        background: #d1d5db;
         border-radius: 4px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8; 
+        background: #9ca3af;
       }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react-dom/": "https://esm.sh/react-dom@^19.2.1/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.32.0",
-    "react/": "https://esm.sh/react@^19.2.1/",
-    "react": "https://esm.sh/react@^19.2.1",
-    "lucide-react": "https://esm.sh/lucide-react@^0.559.0",
-    "react-router-dom": "https://esm.sh/react-router-dom@^7.10.1",
-    "pdf-lib": "https://esm.sh/pdf-lib@^1.17.1",
-    "pdfjs-dist": "https://esm.sh/pdfjs-dist@4.8.69"
-  }
-}
-</script>
-
-</head>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://docuflow.ponslink.com/#organization",
+            "name": "DocuFlow",
+            "url": "https://docuflow.ponslink.com/",
+            "logo": "https://docuflow.ponslink.com/icon.svg",
+            "sameAs": []
+          },
+          {
+            "@type": ["WebApplication", "SoftwareApplication"],
+            "@id": "https://docuflow.ponslink.com/#app",
+            "name": "DocuFlow",
+            "applicationCategory": "ProductivityApplication",
+            "operatingSystem": "Web",
+            "url": "https://docuflow.ponslink.com/",
+            "image": "https://docuflow.ponslink.com/og-image.png",
+            "description": "무료 PDF 변환, 편집, OCR, 보안 처리, HWP/HWPX 변환 문서 도구입니다.",
+            "inLanguage": "ko-KR",
+            "isAccessibleForFree": true,
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "KRW"
+            },
+            "featureList": [
+              "PDF 병합",
+              "PDF 분할",
+              "PDF 압축",
+              "PDF OCR 텍스트 추출",
+              "PDF Markdown 변환",
+              "HWP/HWPX PDF 변환",
+              "PDF HWP 변환",
+              "PDF 암호 보호",
+              "PDF 잠금 해제",
+              "개인정보 검사",
+              "PDF 보안 처리",
+              "도장 및 서명 삽입"
+            ],
+            "publisher": {
+              "@id": "https://docuflow.ponslink.com/#organization"
+            }
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://docuflow.ponslink.com/#website",
+            "url": "https://docuflow.ponslink.com/",
+            "name": "DocuFlow",
+            "description": "무료 PDF 변환·편집·OCR·보안 문서 도구",
+            "inLanguage": "ko-KR",
+            "publisher": {
+              "@id": "https://docuflow.ponslink.com/#organization"
+            }
+          },
+          {
+            "@type": "FAQPage",
+            "@id": "https://docuflow.ponslink.com/#faq",
+            "inLanguage": "ko-KR",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "DocuFlow는 무료인가요?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "네. DocuFlow의 모든 문서 처리 기능은 무료로 제공됩니다. 현재 유료 요금제나 결제를 요구하지 않습니다."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "DocuFlow에서 어떤 문서 작업을 할 수 있나요?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "PDF 병합, 분할, 압축, 이미지 변환, OCR, Markdown 변환, HWP/HWPX 변환, PDF 암호 보호, 잠금 해제, 개인정보 검사, 보안 처리, 도장 및 서명 삽입을 지원합니다."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "업로드한 파일은 안전한가요?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "브라우저 처리 도구는 파일을 서버로 전송하지 않습니다. 서버 처리 도구는 요청한 작업을 위해 임시로 파일을 처리하며 처리 후 자동 삭제되도록 설계되어 있습니다."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+  </head>
   <body>
     <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
-</body>
+    <script type="module" src="/index.tsx"></script>
+  </body>
 </html>

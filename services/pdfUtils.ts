@@ -1,10 +1,8 @@
 import { PDFDocument, rgb, StandardFonts, degrees } from "pdf-lib";
 import * as pdfjsLib from "pdfjs-dist";
+import { configurePdfJs } from "./pdf/pdfLoader";
 
-// Configure PDF.js worker
-// Use esm.sh for worker to match library version and ensure it exists.
-// We use .mjs file because we are in an ESM environment.
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
+configurePdfJs();
 
 export type ProgressCallback = (current: number, total: number, message?: string) => void;
 

@@ -13,12 +13,28 @@ import { getToolByRoute } from "../data/tools";
 import { FileUpload } from "../components/Shared";
 import * as officeUtils from "../../services/officeUtils";
 import * as pdfUtils from "../../services/pdfUtils";
+import {
+  downloadPdfToMarkdownResult,
+  pollPdfToMarkdownJob,
+  submitPdfToMarkdownJob,
+  type PdfMarkdownDiagnostics,
+  type PdfMarkdownJobProgress,
+  type PdfMarkdownOutput,
+} from "../../services/api/markdownApi";
 import { ProgressStep } from "../components/ProgressSteps";
 import JSZip from "jszip";
 
 interface MarkdownResult {
   sourceName: string;
   markdown: string;
+  mode: "local" | "server";
+  diagnostics?: PdfMarkdownDiagnostics;
+  serverDownload?: {
+    jobId: string;
+    token: string;
+    downloadUrl?: string;
+    fileName: string;
+  };
 }
 
 const toSafeMarkdownName = (sourceName: string) => {
@@ -26,6 +42,9 @@ const toSafeMarkdownName = (sourceName: string) => {
   const safeBase = base.replace(/[\\/:*?"<>|]+/g, "-");
   return `${safeBase}.md`;
 };
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
 
 export const PdfToDocxTool = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -223,7 +242,7 @@ export const DocxToPdfTool = () => {
             <button
               type="button"
               onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700"
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
             >
               <Printer size={16} /> Print / Save as PDF
             </button>
@@ -386,10 +405,16 @@ export const PdfToMdTool = () => {
   } | null>(null);
   const [results, setResults] = useState<MarkdownResult[]>([]);
   const [activeResultIndex, setActiveResultIndex] = useState(0);
+  const [conversionMode, setConversionMode] = useState<"local" | "server">("server");
+  const [serverQuality, setServerQuality] = useState<"fast" | "balanced" | "accurate">("balanced");
+  const [serverOcr, setServerOcr] = useState<"none" | "rapidocr" | "tesseract">("rapidocr");
+  const [serverOutput, setServerOutput] = useState<PdfMarkdownOutput>("single");
+  const [splitEvery, setSplitEvery] = useState("");
+  const [jobDiagnostics, setJobDiagnostics] = useState<string[]>([]);
   const [ocrSteps, setOcrSteps] = useState<ProgressStep[]>([
     { id: "init", label: "Preparing files", status: "pending" },
-    { id: "ocr", label: "Converting PDFs", status: "pending" },
-    { id: "finalize", label: "Generating Markdown", status: "pending" },
+    { id: "convert", label: "Converting PDFs", status: "pending" },
+    { id: "finalize", label: "Preparing downloads", status: "pending" },
   ]);
 
   const updateStep = (id: string, status: ProgressStep["status"], detail?: string) => {
@@ -398,18 +423,51 @@ export const PdfToMdTool = () => {
     );
   };
 
-  const downloadMarkdown = (sourceName: string, markdown: string) => {
-    const blob = new Blob([markdown], { type: "text/markdown" });
+  const addDiagnostic = (message: string) => {
+    setJobDiagnostics((prev) => [...prev.slice(-7), message]);
+  };
+
+  const formatServerProgress = (progress?: PdfMarkdownJobProgress) => {
+    if (!progress) return "Waiting for server progress";
+    const prefix =
+      typeof progress.percent === "number" ? `${Math.round(progress.percent)}%` : progress.stage;
+    return [prefix, progress.message].filter(Boolean).join(" - ") || "Processing on server";
+  };
+
+  const downloadBlob = (blob: Blob, fileName: string) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = sourceName.replace(/\.pdf$/i, ".md");
+    link.download = fileName;
     link.click();
     URL.revokeObjectURL(url);
   };
 
+  const downloadMarkdown = async (result: MarkdownResult) => {
+    if (result.serverDownload) {
+      const blob = await downloadPdfToMarkdownResult(
+        result.serverDownload.jobId,
+        result.serverDownload.token,
+        result.serverDownload.downloadUrl
+      );
+      downloadBlob(blob, result.serverDownload.fileName);
+      return;
+    }
+
+    downloadBlob(new Blob([result.markdown], { type: "text/markdown" }), toSafeMarkdownName(result.sourceName));
+  };
+
   const downloadAllAsZip = async () => {
     if (!results.length || downloadingZip) return;
+    const serverResults = results.filter((result) => result.serverDownload);
+    if (serverResults.length) {
+      setZipStatus({
+        type: "error",
+        message: "Server-mode files use token-protected downloads. Download each completed job individually.",
+      });
+      return;
+    }
+
     setDownloadingZip(true);
     setZipStatus(null);
     try {
@@ -433,12 +491,7 @@ export const PdfToMdTool = () => {
         results.length === 1
           ? results[0].sourceName.replace(/\.pdf$/i, "")
           : `pdf-to-markdown-${results.length}-files`;
-      const url = URL.createObjectURL(zipBlob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${zipName}.zip`;
-      link.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(zipBlob, `${zipName}.zip`);
       setZipStatus({
         type: "success",
         message: `${results.length}개 파일을 ZIP으로 다운로드했습니다.`,
@@ -454,50 +507,129 @@ export const PdfToMdTool = () => {
     }
   };
 
+  const convertLocally = async (targetFiles: File[]) => {
+    updateStep("convert", "processing", "Extracting embedded PDF text in this browser");
+    const converted: MarkdownResult[] = [];
+
+    for (const [index, file] of targetFiles.entries()) {
+      const filePrefix = `File ${index + 1}/${targetFiles.length}: ${file.name}`;
+      updateStep("convert", "processing", `${filePrefix} - extracting embedded text`);
+      const markdown = await pdfUtils.extractTextFromPdf(file);
+
+      converted.push({ sourceName: file.name, markdown, mode: "local" });
+    }
+
+    return converted;
+  };
+
+  const convertOnServer = async (targetFiles: File[]) => {
+    updateStep("convert", "processing", "Uploading to DocuFlow server");
+    const converted: MarkdownResult[] = [];
+    const parsedSplitEvery = Number.parseInt(splitEvery, 10);
+    const splitValue = Number.isFinite(parsedSplitEvery) && parsedSplitEvery > 0
+      ? parsedSplitEvery
+      : undefined;
+
+    for (const [index, file] of targetFiles.entries()) {
+      const filePrefix = `File ${index + 1}/${targetFiles.length}: ${file.name}`;
+      updateStep("convert", "processing", `${filePrefix} - starting server job`);
+      addDiagnostic(`${file.name}: uploading to /api/convert/pdf-to-markdown`);
+
+      const created = await submitPdfToMarkdownJob(file, {
+        mode: serverQuality,
+        ocrEngine: serverOcr,
+        output: serverOutput,
+        splitEvery: splitValue,
+      });
+
+      addDiagnostic(`${file.name}: job ${created.jobId} ${created.status}`);
+      const completed = await pollPdfToMarkdownJob(
+        created.jobId,
+        created.downloadToken,
+        (job) => {
+          updateStep("convert", "processing", `${filePrefix} - ${formatServerProgress(job.progress)}`);
+          if (job.progress?.message) {
+            addDiagnostic(`${file.name}: ${job.progress.message}`);
+          }
+        }
+      );
+
+      if (completed.status !== "completed") {
+        throw new Error(completed.error || completed.message || `${file.name} conversion did not complete.`);
+      }
+
+      const token = completed.downloadToken || created.downloadToken;
+      const serverDownload = {
+        jobId: completed.jobId,
+        token,
+        downloadUrl: completed.downloadUrl,
+        fileName: serverOutput === "zip"
+          ? file.name.replace(/\.pdf$/i, ".zip")
+          : toSafeMarkdownName(file.name),
+      };
+      const markdown =
+        serverOutput === "zip"
+          ? "Server conversion completed with split ZIP output. Use Download Result to save the token-protected ZIP."
+          : "Server conversion completed. Use Download Result to save the token-protected Markdown file.";
+
+      converted.push({
+        sourceName: file.name,
+        markdown,
+        mode: "server",
+        diagnostics: completed.diagnostics,
+        serverDownload,
+      });
+      addDiagnostic(`${file.name}: completed`);
+    }
+
+    return converted;
+  };
+
   const handleConvert = async (targetFiles: File[] = files) => {
     if (!targetFiles.length) return;
 
     setProcessing(true);
     setResults([]);
     setActiveResultIndex(0);
+    setJobDiagnostics([]);
+    setZipStatus(null);
     setOcrSteps([
       { id: "init", label: "Preparing files", status: "processing" },
-      { id: "ocr", label: "Converting PDFs", status: "pending" },
-      { id: "finalize", label: "Generating Markdown", status: "pending" },
+      {
+        id: "convert",
+        label: conversionMode === "local" ? "Extracting embedded text" : "Server PDF to Markdown job",
+        status: "pending",
+      },
+      { id: "finalize", label: "Preparing downloads", status: "pending" },
     ]);
 
     try {
       updateStep("init", "completed", `${targetFiles.length} file(s) ready`);
-      updateStep("ocr", "processing", "Extracting text from PDFs...");
+      const converted =
+        conversionMode === "local"
+          ? await convertLocally(targetFiles)
+          : await convertOnServer(targetFiles);
 
-      const converted: MarkdownResult[] = [];
-
-      for (const [index, file] of targetFiles.entries()) {
-        const filePrefix = `File ${index + 1}/${targetFiles.length}: ${file.name}`;
-        updateStep("ocr", "processing", `${filePrefix} - extracting text`);
-        const markdown = await pdfUtils.extractTextFromPdf(file);
-
-        converted.push({ sourceName: file.name, markdown });
-      }
-
-      updateStep("ocr", "completed", `Converted ${converted.length} file(s)`);
+      updateStep("convert", "completed", `Converted ${converted.length} file(s)`);
       updateStep("finalize", "processing", "Preparing preview and downloads");
       setResults(converted);
       setActiveResultIndex(0);
       updateStep("finalize", "completed", "Markdown output ready");
     } catch (e) {
-      console.error(e);
-      updateStep("ocr", "error", (e as Error).message || "Conversion failed");
-      alert(
-        "Failed to extract markdown. " +
-          ((e as Error).message || "Check API key or file format.")
+      const message = getErrorMessage(
+        e,
+        "Check the PDF, server route, or selected conversion mode."
       );
+      console.error(e);
+      updateStep("convert", "error", message);
+      alert(`Failed to extract markdown. ${message}`);
     } finally {
       setProcessing(false);
     }
   };
 
   const activeResult = results[activeResultIndex] || null;
+  const activeDiagnostics = activeResult?.diagnostics;
 
   return (
     <ToolLayout
@@ -507,7 +639,7 @@ export const PdfToMdTool = () => {
       description={getToolByRoute("/pdf-to-md")?.shortDesc}
       isProcessing={processing}
       progressSteps={ocrSteps}
-      progressLabel="Extracting Markdown"
+      progressLabel={conversionMode === "local" ? "Extracting embedded text" : "Running server conversion"}
       progressSubLabel={`Processing ${files.length || 1} PDF file(s)`}
     >
       {!files.length ? (
@@ -530,12 +662,117 @@ export const PdfToMdTool = () => {
             {files.length > 3 ? ` + ${files.length - 3} more` : ""}
           </p>
 
-          <div className="w-full bg-white p-6 rounded-xl border border-gray-200 mb-8">
-            <h4 className="font-semibold text-gray-900 mb-4">Conversion Method</h4>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              OCR is not supported in PDF to Markdown. This tool only extracts embedded text from
-              the PDF.
+          <div className="w-full bg-white p-6 rounded-xl border border-gray-200 mb-8 space-y-5">
+            <div>
+              <h4 className="font-semibold text-gray-900 mb-4">Conversion Method</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setConversionMode("local")}
+                  className={`text-left rounded-xl border p-4 transition-colors ${
+                    conversionMode === "local"
+                      ? "border-purple-300 bg-purple-50 text-purple-900"
+                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
+                  disabled={processing}
+                >
+                  <p className="font-semibold">Local simple extraction</p>
+                  <p className="text-sm mt-1">
+                    Uses DocuFlow PDF.js text extraction in your browser. No upload, no OCR.
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConversionMode("server")}
+                  className={`text-left rounded-xl border p-4 transition-colors ${
+                    conversionMode === "server"
+                      ? "border-purple-300 bg-purple-50 text-purple-900"
+                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
+                  disabled={processing}
+                >
+                  <p className="font-semibold">Server high-quality conversion</p>
+                  <p className="text-sm mt-1">
+                    Uploads the PDF to the DocuFlow server for pdftomd extraction and optional OCR.
+                  </p>
+                </button>
+              </div>
             </div>
+
+            {conversionMode === "local" ? (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                Local mode only extracts embedded text. Scanned pages and OCR require server mode.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Server mode uploads files to the configured DocuFlow API. OCR runs only when the
+                  selected server engine is available; no third-party provider is used by the browser.
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <label className="text-sm font-medium text-gray-700">
+                    Quality profile
+                    <select
+                      value={serverQuality}
+                      onChange={(event) => setServerQuality(event.target.value as "fast" | "balanced" | "accurate")}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2"
+                      disabled={processing}
+                    >
+                      <option value="fast">Fast</option>
+                      <option value="balanced">Balanced</option>
+                      <option value="accurate">Accurate</option>
+                    </select>
+                  </label>
+                  <label className="text-sm font-medium text-gray-700">
+                    OCR engine
+                    <select
+                      value={serverOcr}
+                      onChange={(event) => setServerOcr(event.target.value as "none" | "rapidocr" | "tesseract")}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2"
+                      disabled={processing}
+                    >
+                      <option value="none">None</option>
+                      <option value="rapidocr">RapidOCR on server</option>
+                      <option value="tesseract">Tesseract on server</option>
+                    </select>
+                  </label>
+                  <label className="text-sm font-medium text-gray-700">
+                    Output
+                    <select
+                      value={serverOutput}
+                      onChange={(event) => setServerOutput(event.target.value as PdfMarkdownOutput)}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2"
+                      disabled={processing}
+                    >
+                      <option value="single">Single Markdown file</option>
+                      <option value="zip">ZIP split output</option>
+                    </select>
+                  </label>
+                  <label className="text-sm font-medium text-gray-700">
+                    Split every N pages
+                    <input
+                      value={splitEvery}
+                      onChange={(event) => setSplitEvery(event.target.value)}
+                      inputMode="numeric"
+                      placeholder="Optional"
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2"
+                      disabled={processing}
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {jobDiagnostics.length > 0 && (
+              <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                <p className="text-sm font-semibold text-gray-800 mb-2">Server diagnostics</p>
+                <ul className="space-y-1 text-xs text-gray-600">
+                  {jobDiagnostics.map((message, index) => (
+                    <li key={`${message}-${index}`}>{message}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
           <button
@@ -546,7 +783,9 @@ export const PdfToMdTool = () => {
             className="px-8 py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-lg transition-all w-full text-lg"
             disabled={processing}
           >
-            {`Extract Markdown (${files.length})`}
+            {conversionMode === "local"
+              ? `Extract Markdown Locally (${files.length})`
+              : `Start Server Conversion (${files.length})`}
           </button>
 
           <button
@@ -567,7 +806,7 @@ export const PdfToMdTool = () => {
                 type="button"
                 onClick={downloadAllAsZip}
                 disabled={downloadingZip}
-                className="text-xs px-3 py-1.5 rounded-md bg-purple-600 text-white hover:bg-purple-700"
+                className="text-xs px-3 py-1.5 rounded-md bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-300"
               >
                 {downloadingZip ? "Creating ZIP..." : "Download ZIP"}
               </button>
@@ -594,6 +833,9 @@ export const PdfToMdTool = () => {
                   }`}
                 >
                   <p className="text-sm font-medium truncate">{result.sourceName}</p>
+                  <p className="text-xs text-gray-500">
+                    {result.mode === "local" ? "Local embedded text" : "Server pdftomd job"}
+                  </p>
                 </button>
               ))}
             </div>
@@ -615,16 +857,33 @@ export const PdfToMdTool = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() =>
-                      downloadMarkdown(activeResult.sourceName, activeResult.markdown)
-                    }
+                    onClick={() => {
+                      void downloadMarkdown(activeResult);
+                    }}
                     className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
                   >
-                    <FileCode size={16} /> Download MD
+                    <FileCode size={16} /> {activeResult.serverDownload ? "Download Result" : "Download MD"}
                   </button>
                 </div>
               )}
             </div>
+            {activeDiagnostics && (
+              <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                <p className="font-semibold text-gray-900 mb-2">Conversion diagnostics</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <p>Pages: {activeDiagnostics.pageCount ?? "unknown"}</p>
+                  <p>Weak pages: {activeDiagnostics.weakPages?.join(", ") || "none"}</p>
+                  <p>OCR pages: {activeDiagnostics.ocrPages?.join(", ") || "none"}</p>
+                </div>
+                {activeDiagnostics.warnings?.length ? (
+                  <ul className="mt-2 list-disc list-inside text-amber-700">
+                    {activeDiagnostics.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            )}
             <div className="flex-1 bg-white border border-gray-200 rounded-xl p-6 overflow-y-auto shadow-inner">
               <textarea
                 className="w-full h-full min-h-[420px] bg-transparent border-none outline-none font-mono text-sm leading-relaxed resize-none"
@@ -638,6 +897,7 @@ export const PdfToMdTool = () => {
                 setFiles([]);
                 setResults([]);
                 setActiveResultIndex(0);
+                setJobDiagnostics([]);
               }}
               className="mt-4 text-gray-500 hover:text-gray-700 text-left"
             >

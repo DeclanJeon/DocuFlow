@@ -1,6 +1,6 @@
 import React, { ComponentType, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { FileText } from "lucide-react";
+import { FileText, ArrowLeft, Home, BookOpen } from "lucide-react";
 import { TOOL_GROUPS } from "../data/tools";
 
 import {
@@ -127,31 +127,40 @@ export const AppShell = ({ children }: { children: React.ReactNode }) => {
 };
 
 export const Navbar = () => (
-  <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
+  <nav className="bg-white/80 backdrop-blur-lg border-b border-gray-200/80 sticky top-0 z-50">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex justify-between h-16">
-        <div className="flex items-center">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white">
-              <FileText size={20} strokeWidth={3} />
+        <div className="flex items-center gap-3">
+          <Link to="/" className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-sm shadow-indigo-200">
+              <FileText size={18} strokeWidth={2.5} />
             </div>
-            <span className="text-xl font-bold text-gray-900 tracking-tight">
+            <span className="text-lg font-bold tracking-tight text-gray-900">
               DocuFlow
             </span>
           </Link>
+          <span className="inline-flex items-center rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
+            FREE
+          </span>
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center gap-1">
           <Link
             to="/"
-            className="text-sm font-medium text-gray-500 hover:text-brand-600 transition-colors"
+            className="px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-900 rounded-md transition-colors"
           >
             Tools
           </Link>
           <Link
-            to="/#usage-guide"
-            className="text-sm font-medium text-gray-500 hover:text-brand-600 transition-colors"
+            to="/guide"
+            className="px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-900 rounded-md transition-colors"
           >
             Guide
+          </Link>
+          <Link
+            to="/privacy"
+            className="px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-900 rounded-md transition-colors"
+          >
+            Privacy
           </Link>
         </div>
       </div>
@@ -160,11 +169,35 @@ export const Navbar = () => (
 );
 
 export const Footer = () => (
-  <footer className="bg-white border-t border-gray-200 mt-auto py-12">
-    <div className="max-w-7xl mx-auto px-4 text-center">
-      <p className="text-gray-500 text-sm">
-        © 2025 DocuFlow. All rights reserved.
-      </p>
+  <footer className="bg-white border-t border-gray-200 mt-auto">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="flex items-center gap-2.5">
+          <div className="w-6 h-6 bg-indigo-600 rounded-md flex items-center justify-center text-white">
+            <FileText size={14} strokeWidth={2.5} />
+          </div>
+          <span className="text-sm font-bold tracking-tight text-gray-900">DocuFlow</span>
+          <span className="inline-flex items-center rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
+            FREE
+          </span>
+        </div>
+        <div className="flex items-center gap-6">
+          <Link to="/guide" className="text-sm text-gray-400 hover:text-indigo-600 transition-colors">
+            이용 가이드
+          </Link>
+          <Link to="/privacy" className="text-sm text-gray-400 hover:text-indigo-600 transition-colors">
+            개인정보처리방침
+          </Link>
+          <Link to="/terms" className="text-sm text-gray-400 hover:text-indigo-600 transition-colors">
+            이용약관
+          </Link>
+        </div>
+      </div>
+      <div className="mt-8 pt-6 border-t border-gray-100">
+        <p className="text-center text-xs text-gray-400">
+          © 2026 DocuFlow. All rights reserved. All document processing tools are provided free of charge.
+        </p>
+      </div>
     </div>
   </footer>
 );
@@ -298,16 +331,32 @@ export const ToolLayout = ({
   return (
     <div className="min-h-full flex flex-col">
       {/* Tool Header */}
-      <div className="px-8 pt-8 pb-6 border-b border-slate-200 bg-white">
+      <div className="px-8 pt-6 pb-6 border-b border-gray-200 bg-white">
         <div className="max-w-5xl mx-auto">
+          <div className="flex items-center gap-2 mb-5">
+            <Link
+              to="/"
+              className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-900 hover:border-gray-300 transition-colors"
+            >
+              <ArrowLeft size={14} />
+              뒤로
+            </Link>
+            <Link
+              to="/"
+              className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-900 hover:border-gray-300 transition-colors"
+            >
+              <Home size={14} />
+              홈
+            </Link>
+          </div>
           {icon && (
-            <div className={`inline-flex w-10 h-10 rounded-xl items-center justify-center mb-3 ${iconColorClass || "bg-blue-600"}`}>
+            <div className={`inline-flex w-10 h-10 rounded-xl items-center justify-center mb-3 ${iconColorClass || "bg-indigo-600"} shadow-sm`}>
               {React.createElement(icon, { size: 20, className: "text-white" })}
             </div>
           )}
-          <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">{title}</h1>
           {description && (
-            <p className="mt-1 text-sm text-slate-500">{description}</p>
+            <p className="mt-1 text-sm text-gray-500">{description}</p>
           )}
         </div>
       </div>

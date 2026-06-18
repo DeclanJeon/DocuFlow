@@ -143,7 +143,7 @@ const SignaturePad = ({
           <button
             type="button"
             onClick={handleSave}
-            className="px-6 py-2 bg-brand-600 text-white rounded-lg text-sm font-bold hover:bg-brand-700"
+            className="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700"
           >
             Save Signature
           </button>
@@ -371,7 +371,7 @@ export const SignTool = () => {
                     onDragStart={(e) => handleDragStart(e, `sig-${i}`)}
                     onDragEnd={handleDragEnd}
                     className={`border rounded-lg p-2 cursor-pointer hover:bg-gray-50 ${
-                      selectedSig === sig ? "ring-2 ring-brand-500" : ""
+                      selectedSig === sig ? "ring-2 ring-indigo-500" : ""
                     } ${selectedSig ? "" : "cursor-move"}`}
                   >
                     <img

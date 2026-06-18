@@ -43,7 +43,7 @@ const ProgressInsightPanel: React.FC<{ insight: ProgressInsight }> = ({
     <div className="mt-6 border-t border-gray-100 pt-5">
       <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
         <div
-          className="bg-brand-600 h-full rounded-full transition-all duration-700 ease-out"
+          className="bg-indigo-600 h-full rounded-full transition-all duration-700 ease-out"
           style={{ width: `${Math.max(5, Math.min(100, insight.progressPercent))}%` }}
         />
       </div>
@@ -93,7 +93,7 @@ export const ProgressSteps: React.FC<ProgressStepsProps> = ({
                 <CheckCircle2 className="text-emerald-500" size={20} />
               )}
               {step.status === "processing" && (
-                <Loader2 className="text-brand-600 animate-spin" size={20} />
+                <Loader2 className="text-indigo-600 animate-spin" size={20} />
               )}
               {step.status === "pending" && (
                 <Circle className="text-gray-300" size={20} />
@@ -106,7 +106,7 @@ export const ProgressSteps: React.FC<ProgressStepsProps> = ({
               <p
                 className={`font-medium ${
                   step.status === "processing"
-                    ? "text-brand-600"
+                    ? "text-indigo-600"
                     : step.status === "completed"
                     ? "text-gray-900"
                     : "text-gray-400"
@@ -135,14 +135,14 @@ export const SimpleProgressBar: React.FC<{
   return (
     <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full border border-gray-100 animate-in fade-in zoom-in duration-300">
       <div className="flex flex-col items-center mb-6">
-        <Loader2 size={40} className="text-brand-600 animate-spin mb-4" />
+        <Loader2 size={40} className="text-indigo-600 animate-spin mb-4" />
         <h3 className="text-xl font-bold text-gray-900">{label || "Processing..."}</h3>
         {subLabel && <p className="text-gray-500 text-sm mt-2">{subLabel}</p>}
       </div>
       
       <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
         <div 
-          className="bg-brand-600 h-full rounded-full transition-all duration-500 ease-out"
+          className="bg-indigo-600 h-full rounded-full transition-all duration-500 ease-out"
           style={{ width: `${Math.max(5, Math.min(100, progress))}%` }}
         />
       </div>

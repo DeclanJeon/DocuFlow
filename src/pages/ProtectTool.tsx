@@ -3,18 +3,12 @@ import { Lock, Unlock, FileText } from "lucide-react";
 import { ToolLayout } from "../components/Layout";
 import { getToolByRoute } from "../data/tools";
 import { FileUpload } from "../components/Shared";
-import * as pdfUtils from "../../services/pdfUtils";
-
-const uint8ArrayToBlob = (
-  bytes: Uint8Array,
-  mimeType: string = "application/pdf"
-): Blob => {
-  // Convert Uint8Array to a new ArrayBuffer to ensure type compatibility
-  const arrayBuffer = new ArrayBuffer(bytes.length);
-  const view = new Uint8Array(arrayBuffer);
-  view.set(bytes);
-  return new Blob([arrayBuffer], { type: mimeType });
-};
+import {
+  decryptPdfOnServer,
+  downloadBlob,
+  downloadCompletedPdfJob,
+  encryptPdfOnServer,
+} from "../../services/api/pdfJobApi";
 
 export const ProtectTool = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -30,25 +24,19 @@ export const ProtectTool = () => {
     setProcessing(true);
     setStatus(null);
     try {
-      const bytes = await pdfUtils.encryptPdf(file, password);
-      const blob = uint8ArrayToBlob(bytes);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `protected_${file.name}`;
-      link.click();
-      URL.revokeObjectURL(url);
+      const job = await encryptPdfOnServer(file, password);
+      const blob = await downloadCompletedPdfJob(job);
+      downloadBlob(blob, job.resultFilename || `protected_${file.name}`);
       setStatus({
         type: "success",
-        message:
-          "처리가 완료되었습니다. 현재 브라우저 환경에서는 일부 PDF 암호화 옵션이 제한될 수 있습니다.",
+        message: "qpdf 서버 암호화가 완료되어 다운로드가 시작되었습니다.",
       });
     } catch (e) {
       console.error(e);
+      const message = e instanceof Error ? e.message : "PDF 보호 처리에 실패했습니다.";
       setStatus({
         type: "error",
-        message:
-          "PDF 보호 처리에 실패했습니다. 파일을 다시 선택하거나 비밀번호를 변경해 재시도해 주세요.",
+        message,
       });
     } finally {
       setProcessing(false);
@@ -123,9 +111,9 @@ export const ProtectTool = () => {
             )}
 
             <div className="mt-4 text-left text-xs text-gray-500 bg-amber-50 border border-amber-100 rounded-lg p-3">
-              Browser-based PDF processing has library compatibility limits.
-              If a specific file fails, try: (1) re-save PDF in another viewer,
-              (2) retry with a shorter password, (3) process from Unlock first.
+              This uses the DocuFlow server qpdf pipeline. The file is uploaded
+              temporarily, encrypted with 256-bit PDF password protection, then
+              removed by the server cleanup window.
             </div>
           </div>
         </div>
@@ -149,17 +137,12 @@ export const UnlockTool = () => {
     setStatus(null);
 
     try {
-      const bytes = await pdfUtils.unlockPdf(file, password);
-      const blob = uint8ArrayToBlob(bytes);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `unlocked_${file.name}`;
-      link.click();
-      URL.revokeObjectURL(url);
+      const job = await decryptPdfOnServer(file, password);
+      const blob = await downloadCompletedPdfJob(job);
+      downloadBlob(blob, job.resultFilename || `unlocked_${file.name}`);
       setStatus({
         type: "success",
-        message: "잠금 해제 PDF 다운로드가 시작되었습니다.",
+        message: "qpdf 서버 잠금 해제가 완료되어 다운로드가 시작되었습니다.",
       });
     } catch (e) {
       console.error(e);
@@ -243,8 +226,9 @@ export const UnlockTool = () => {
             )}
 
             <div className="mt-4 text-left text-xs text-gray-500 bg-emerald-50 border border-emerald-100 rounded-lg p-3">
-              If unlock fails repeatedly: verify password, ensure this is an
-              encrypted PDF, then re-export the file once and try again.
+              This uses the DocuFlow server qpdf pipeline. Wrong passwords are
+              rejected by qpdf; the original upload is temporary and requires a
+              valid download token for the result.
             </div>
           </div>
         </div>

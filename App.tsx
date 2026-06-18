@@ -1,24 +1,13 @@
 import React, { Suspense, lazy } from "react";
 import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
+import { Loader2, BookOpen } from "lucide-react";
+import { Navbar, Footer } from "./src/components/Layout";
+import { ToolCard } from "./src/components/Shared";
 import {
-  Merge,
-  Split,
-  Image as ImageIcon,
-  FileOutput,
-  Hash,
-  PenTool,
-  Search,
-  FileType,
-  FileText,
-  Loader2,
-  Minimize2,
-  Grid,
-  Stamp,
-  Shield,
-  Unlock,
-  Type,
-  BookOpen,
-} from "lucide-react";
+  ErrorBoundary,
+  SimpleErrorFallback,
+} from "./src/components/ErrorBoundary";
+import { ALL_TOOLS, TOOL_GROUPS } from "./src/data/tools";
 
 // 페이지 컴포넌트 Lazy Loading
 const MergePdfTool = lazy(() =>
@@ -74,6 +63,16 @@ const EpubToPdfTool = lazy(() =>
     default: module.EpubToPdfTool,
   }))
 );
+const HwpToPdfTool = lazy(() =>
+  import("./src/pages/HwpTools").then((module) => ({
+    default: module.HwpToPdfTool,
+  }))
+);
+const PdfToHwpTool = lazy(() =>
+  import("./src/pages/HwpTools").then((module) => ({
+    default: module.PdfToHwpTool,
+  }))
+);
 // New Tools
 const CompressPdfTool = lazy(() =>
   import("./src/pages/PdfTools").then((module) => ({
@@ -105,252 +104,145 @@ const SignTool = lazy(() =>
     default: module.SignTool,
   }))
 );
-// 공통 컴포넌트 임포트
-import { Navbar, Footer } from "./src/components/Layout";
-import { ToolCard } from "./src/components/Shared";
-import {
-  ErrorBoundary,
-  SimpleErrorFallback,
-} from "./src/components/ErrorBoundary";
+const RedactionTool = lazy(() =>
+  import("./src/pages/RedactionTool").then((module) => ({
+    default: module.RedactionTool,
+  }))
+);
+const PrivacyScanTool = lazy(() =>
+  import("./src/pages/RedactionTool").then((module) => ({
+    default: function PrivacyScanRoute() {
+      return <module.RedactionTool detectionOnly />;
+    },
+  }))
+);
+const StampTool = lazy(() =>
+  import("./src/pages/StampTool").then((module) => ({
+    default: module.StampTool,
+  }))
+);
+const PrivacyPolicy = lazy(() => import("./src/pages/PrivacyPolicy"));
+const TermsOfService = lazy(() => import("./src/pages/TermsOfService"));
+const GuidePage = lazy(() => import("./src/pages/GuidePage"));
+const getDashboardGroupDescription = (label: string) => {
+  switch (label) {
+    case "PDF 도구":
+      return "PDF 파일의 자주 사용하는 편집, 최적화, 추출 기능입니다.";
+    case "오피스 & 문서 변환":
+      return "오피스 및 문서 형식 간 변환으로 공유와 편집 워크플로우를 지원합니다.";
+    case "보안 & 개인정보":
+      return "PDF 보안 설정, 잠금 해제, 보안 처리, 도장, 서명, 민감한 내용 검사를 수행합니다.";
+    default:
+      return "원하는 문서 작업을 선택하고 파일을 빠르게 처리하세요.";
+  }
+};
 
 const Dashboard = () => {
-  const pdfTools = [
-    {
-      to: "/merge",
-      icon: Merge,
-      title: "Merge Files",
-      description:
-        "Combine PDFs, JPG, PNG, and other image files into one unified PDF document.",
-      colorClass: "bg-rose-500",
-    },
-    {
-      to: "/split",
-      icon: Split,
-      title: "Split PDF",
-      description: "Separate one page or a whole set for easy conversion.",
-      colorClass: "bg-orange-500",
-    },
-    {
-      to: "/pdf-to-img",
-      icon: ImageIcon,
-      title: "PDF to JPG",
-      description: "Extract images from your PDF or save each page as a separate image.",
-      colorClass: "bg-amber-500",
-    },
-    {
-      to: "/img-to-pdf",
-      icon: FileOutput,
-      title: "JPG to PDF",
-      description: "Convert your images to a PDF file in seconds.",
-      colorClass: "bg-emerald-500",
-    },
-    {
-      to: "/page-numbers",
-      icon: Hash,
-      title: "Page Numbers",
-      description: "Add page numbers into your PDF documents easily.",
-      colorClass: "bg-cyan-500",
-    },
-    {
-      to: "/annotate",
-      icon: PenTool,
-      title: "Annotate PDF",
-      description: "Draw, type and add notes to your PDF documents.",
-      colorClass: "bg-blue-600",
-    },
-    {
-      to: "/ocr",
-      icon: Search,
-      title: "OCR Reader",
-      description: "Extract text from PDFs and images with OCR (local-first support).",
-      colorClass: "bg-violet-600",
-    },
-    {
-      to: "/compress",
-      icon: Minimize2,
-      title: "Compress PDF",
-      description: "Reduce file size while maintaining quality.",
-      colorClass: "bg-rose-600",
-    },
-    {
-      to: "/organize",
-      icon: Grid,
-      title: "Organize PDF",
-      description: "Rearrange, rotate, and delete pages visually.",
-      colorClass: "bg-indigo-500",
-    },
-    {
-      to: "/watermark",
-      icon: Stamp,
-      title: "Watermark",
-      description: "Add text or image watermarks for security.",
-      colorClass: "bg-blue-400",
-    },
-    {
-      to: "/protect",
-      icon: Shield,
-      title: "Protect PDF",
-      description: "Encrypt your PDF with a password.",
-      colorClass: "bg-gray-700",
-    },
-    {
-      to: "/unlock",
-      icon: Unlock,
-      title: "Unlock PDF",
-      description: "Unlock password-protected PDF files.",
-      colorClass: "bg-teal-600",
-    },
-    {
-      to: "/sign",
-      icon: Type,
-      title: "Sign & Stamp",
-      description: "Add signatures easily.",
-      colorClass: "bg-emerald-600",
-    },
-  ];
-
-  const officeTools = [
-    {
-      to: "/pdf-to-docx",
-      icon: FileType,
-      title: "PDF to Word",
-      description: "Convert PDF files into editable DOCX documents.",
-      colorClass: "bg-blue-700",
-    },
-    {
-      to: "/docx-to-pdf",
-      icon: FileType,
-      title: "Word to PDF",
-      description: "Generate high-quality PDF files from DOCX documents.",
-      colorClass: "bg-indigo-600",
-    },
-    {
-      to: "/pdf-to-md",
-      icon: FileText,
-      title: "PDF to Markdown",
-      description: "Extract text from PDF as clean Markdown for editing.",
-      colorClass: "bg-purple-600",
-    },
-    {
-      to: "/epub-to-pdf",
-      icon: BookOpen,
-      title: "EPUB to PDF",
-      description: "Convert EPUB ebook files into readable PDF documents.",
-      colorClass: "bg-emerald-600",
-    },
-  ];
-
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-white">
       <Navbar />
 
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-brand-900 to-sky-900 px-4 py-20 text-white md:py-24">
-        <div className="absolute -left-24 top-10 h-56 w-56 rounded-full bg-cyan-400/20 blur-3xl" />
-        <div className="absolute -right-24 bottom-2 h-64 w-64 rounded-full bg-brand-300/20 blur-3xl" />
+      <section className="relative overflow-hidden bg-gradient-to-br from-indigo-950 via-slate-900 to-cyan-950 px-4 py-20 text-white md:py-28">
+        <div className="absolute -left-32 top-0 h-96 w-96 rounded-full bg-indigo-500/15 blur-[100px]" />
+        <div className="absolute -right-32 bottom-0 h-96 w-96 rounded-full bg-cyan-500/10 blur-[100px]" />
         <div className="relative mx-auto max-w-7xl">
           <div className="max-w-3xl">
-            <p className="mb-4 inline-flex rounded-full border border-white/30 bg-white/10 px-4 py-1 text-sm font-medium text-sky-100">
-              Smart PDF Toolkit for daily workflows
+            <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-1.5 text-sm font-medium text-white/80 backdrop-blur-sm">
+              100% 무료 — 모든 문서 도구를 자유롭게 사용하세요
             </p>
-            <h1 className="text-4xl font-extrabold tracking-tight md:text-6xl">
-              Document work, completed
-              <span className="block text-cyan-200">in a single flow</span>
+            <h1 className="text-4xl font-bold tracking-tight md:text-6xl" style={{ letterSpacing: '-0.04em' }}>
+              문서 작업,
+              <span className="block text-indigo-300">한 번의 흐름으로 완성</span>
             </h1>
-            <p className="mt-6 max-w-2xl text-base text-slate-100/90 md:text-lg">
-              DocuFlow provides practical tools for conversion, editing, OCR, and
-              security. Start with the job you need and process your files quickly
-              in your browser.
+            <p className="mt-6 max-w-2xl text-base text-white/70 md:text-lg leading-relaxed">
+              DocuFlow는 PDF 변환, 편집, OCR, 보안 처리에 필요한 실용적인 도구를 무료로 제공합니다.
+              원하는 작업을 선택하고 파일을 빠르게 처리하세요.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
                 to="/merge"
-                className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-slate-900 shadow-lg transition hover:-translate-y-0.5 hover:bg-slate-100"
+                className="rounded-full bg-white px-6 py-3 text-sm font-semibold text-gray-900 shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl"
               >
-                Start with Merge
+                Merge로 시작하기
               </Link>
-              <a
-                href="#usage-guide"
-                className="rounded-xl border border-white/40 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/20"
+              <Link
+                to="/guide"
+                className="rounded-full border border-white/25 bg-white/5 px-6 py-3 text-sm font-semibold text-white backdrop-blur-sm transition-all hover:bg-white/10"
               >
-                Usage Guide
-              </a>
+                이용 가이드
+              </Link>
             </div>
           </div>
 
-          <div className="mt-10 grid grid-cols-2 gap-3 md:mt-14 md:grid-cols-4">
-            <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
-              <p className="text-2xl font-bold">17+</p>
-              <p className="mt-1 text-xs text-slate-100/80">Document tools</p>
+          <div className="mt-14 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
+              <p className="text-2xl font-bold tracking-tight">{ALL_TOOLS.length}+</p>
+              <p className="mt-1 text-xs text-white/50">문서 도구</p>
             </div>
-            <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
-              <p className="text-2xl font-bold">OCR</p>
-              <p className="mt-1 text-xs text-slate-100/80">Image/PDF text extraction</p>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
+              <p className="text-2xl font-bold tracking-tight">OCR</p>
+              <p className="mt-1 text-xs text-white/50">이미지/PDF 텍스트 추출</p>
             </div>
-            <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
-              <p className="text-2xl font-bold">EPUB</p>
-              <p className="mt-1 text-xs text-slate-100/80">Ebook conversion workflow</p>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
+              <p className="text-2xl font-bold tracking-tight">HWP</p>
+              <p className="mt-1 text-xs text-white/50">한글 문서 변환</p>
             </div>
-            <div className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur">
-              <p className="text-2xl font-bold">Secure</p>
-              <p className="mt-1 text-xs text-slate-100/80">Protect and unlock PDF</p>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
+              <p className="text-2xl font-bold tracking-tight">FREE</p>
+              <p className="mt-1 text-xs text-white/50">모든 기능 무료</p>
             </div>
           </div>
         </div>
       </section>
 
-      <section id="usage-guide" className="mx-auto max-w-7xl px-4 py-14">
-        <div className="rounded-3xl border border-slate-200 bg-white px-6 py-8 shadow-sm md:px-8">
-          <h2 className="text-2xl font-bold text-slate-900">How to use DocuFlow</h2>
-          <p className="mt-2 text-sm text-slate-600 md:text-base">
-            1) Select a tool card, 2) upload files, 3) configure options, and 4)
-            download the result. For long tasks, progress feedback is shown in real time.
+      {/* Quick Start Guide */}
+      <section id="usage-guide" className="mx-auto max-w-7xl px-4 py-16">
+        <div className="rounded-2xl border border-gray-200 bg-white px-8 py-10">
+          <h2 className="text-xl font-semibold tracking-tight text-gray-900">DocuFlow 사용법</h2>
+          <p className="mt-2 text-sm text-gray-500 leading-relaxed">
+            1) 도구를 선택하고, 2) 파일을 업로드하고, 3) 옵션을 설정하고, 4) 결과를 다운로드하세요.
+            긴 작업의 경우 실시간으로 진행 상황을 확인할 수 있습니다.
           </p>
-          <div className="mt-5 grid gap-3 text-sm md:grid-cols-3">
-            <div className="rounded-xl bg-slate-100 px-4 py-3 text-slate-700">
-              Conversion: PDF, DOCX, EPUB, Markdown
+          <div className="mt-6 grid gap-3 text-sm md:grid-cols-3">
+            <div className="rounded-lg bg-gray-50 px-4 py-3 text-gray-600 border border-gray-100">
+              변환: PDF, DOCX, EPUB, Markdown, HWP
             </div>
-            <div className="rounded-xl bg-slate-100 px-4 py-3 text-slate-700">
-              Editing: Merge, Split, Organize, Watermark, Sign
+            <div className="rounded-lg bg-gray-50 px-4 py-3 text-gray-600 border border-gray-100">
+              편집: 병합, 분할, 정리, 워터마크, 서명
             </div>
-            <div className="rounded-xl bg-slate-100 px-4 py-3 text-slate-700">
-              Security: Protect/Unlock + OCR extraction
+            <div className="rounded-lg bg-gray-50 px-4 py-3 text-gray-600 border border-gray-100">
+              보안: 암호 설정, 해제, 보안 처리, 도장
             </div>
+          </div>
+          <div className="mt-6">
+            <Link
+              to="/guide"
+              className="inline-flex items-center gap-2 rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700 hover:shadow-md"
+            >
+              <BookOpen size={16} />
+              전체 이용 가이드 보기
+            </Link>
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 pb-16">
-        <div className="mb-6 flex items-end justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900">PDF Essential Tools</h2>
-            <p className="text-sm text-slate-600 md:text-base">
-              Frequently used editing, optimization, and security operations for PDF files.
+      {/* Tool Groups */}
+      {TOOL_GROUPS.map((group) => (
+        <section key={group.label} className="mx-auto max-w-7xl px-4 pb-16 last:pb-20">
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold tracking-tight text-gray-900">{group.label}</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              {getDashboardGroupDescription(group.label)}
             </p>
           </div>
-        </div>
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-          {pdfTools.map((tool) => (
-            <ToolCard key={tool.to} {...tool} />
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-4 pb-20">
-        <div className="mb-6 flex items-end justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900">Office & Reading Tools</h2>
-            <p className="text-sm text-slate-600 md:text-base">
-              Convert across office and reading formats for sharing and editing workflows.
-            </p>
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
+            {group.tools.map((tool) => (
+              <ToolCard key={tool.to} {...tool} />
+            ))}
           </div>
-        </div>
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-          {officeTools.map((tool) => (
-            <ToolCard key={tool.to} {...tool} />
-          ))}
-        </div>
-      </section>
+        </section>
+      ))}
 
       <Footer />
     </div>
@@ -359,11 +251,11 @@ const Dashboard = () => {
 
 // 로딩 컴포넌트
 const LoadingSpinner = () => (
-  <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
-    <div className="w-16 h-16 bg-brand-600 rounded-full flex items-center justify-center mb-4">
-      <Loader2 size={32} className="text-white animate-spin" />
+  <div className="min-h-screen bg-white flex flex-col items-center justify-center">
+    <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center mb-4 shadow-sm shadow-indigo-200">
+      <Loader2 size={24} className="text-white animate-spin" />
     </div>
-    <p className="text-lg font-medium text-gray-700">Loading tool...</p>
+    <p className="text-sm font-medium text-gray-500">Loading...</p>
   </div>
 );
 
@@ -503,6 +395,36 @@ const App = () => {
             </ErrorBoundary>
           }
         />
+        <Route
+          path="/redact"
+          element={
+            <ErrorBoundary fallback={<SimpleErrorFallback />}>
+              <Suspense fallback={<LoadingSpinner />}>
+                <RedactionTool />
+              </Suspense>
+            </ErrorBoundary>
+          }
+        />
+        <Route
+          path="/privacy-scan"
+          element={
+            <ErrorBoundary fallback={<SimpleErrorFallback />}>
+              <Suspense fallback={<LoadingSpinner />}>
+                <PrivacyScanTool />
+              </Suspense>
+            </ErrorBoundary>
+          }
+        />
+        <Route
+          path="/stamp"
+          element={
+            <ErrorBoundary fallback={<SimpleErrorFallback />}>
+              <Suspense fallback={<LoadingSpinner />}>
+                <StampTool />
+              </Suspense>
+            </ErrorBoundary>
+          }
+        />
 
         {/* New Office Tools Routes */}
         <Route
@@ -536,6 +458,26 @@ const App = () => {
           }
         />
         <Route
+          path="/hwp-to-pdf"
+          element={
+            <ErrorBoundary fallback={<SimpleErrorFallback />}>
+              <Suspense fallback={<LoadingSpinner />}>
+                <HwpToPdfTool />
+              </Suspense>
+            </ErrorBoundary>
+          }
+        />
+        <Route
+          path="/pdf-to-hwp"
+          element={
+            <ErrorBoundary fallback={<SimpleErrorFallback />}>
+              <Suspense fallback={<LoadingSpinner />}>
+                <PdfToHwpTool />
+              </Suspense>
+            </ErrorBoundary>
+          }
+        />
+        <Route
           path="/epub-to-pdf"
           element={
             <ErrorBoundary fallback={<SimpleErrorFallback />}>
@@ -543,6 +485,31 @@ const App = () => {
                 <EpubToPdfTool />
               </Suspense>
             </ErrorBoundary>
+          }
+        />
+        {/* Legal & Guide Routes */}
+        <Route
+          path="/privacy"
+          element={
+            <Suspense fallback={<LoadingSpinner />}>
+              <PrivacyPolicy />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/terms"
+          element={
+            <Suspense fallback={<LoadingSpinner />}>
+              <TermsOfService />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/guide"
+          element={
+            <Suspense fallback={<LoadingSpinner />}>
+              <GuidePage />
+            </Suspense>
           }
         />
       </Routes>

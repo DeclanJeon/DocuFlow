@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "pdf-server": "node server/pdf-server.mjs",
+    "smoke:pdf": "node scripts/pdf-regression-smoke.mjs",
+    "smoke:browser": "node scripts/browser-route-smoke.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },

@@ -21,6 +21,11 @@ import { getToolByRoute } from "../data/tools";
 import { FileUpload } from "../components/Shared";
 import * as pdfUtils from "../../services/pdfUtils";
 import { performOCRWithOpenRouter } from "../../services/openRouterService";
+import {
+  compressPdfOnServer,
+  downloadBlob,
+  downloadCompletedPdfJob,
+} from "../../services/api/pdfJobApi";
 import { Annotation } from "../../types";
 import {
   DndContext,
@@ -269,7 +274,7 @@ export const MergePdfTool = () => {
             <button
               type="button"
               onClick={handleMerge}
-              className="px-8 py-4 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-lg shadow-brand-200 transition-all transform hover:-translate-y-0.5 min-w-[200px]"
+              className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all transform hover:-translate-y-0.5 min-w-[200px]"
             >
               Merge Files
             </button>
@@ -351,7 +356,7 @@ export const SplitPdfTool = () => {
                 onClick={() => setMode("range")}
                 className={`flex-1 py-3 rounded-xl font-medium border-2 transition-all ${
                   mode === "range"
-                    ? "border-brand-500 bg-brand-50 text-brand-700"
+                    ? "border-indigo-500 bg-indigo-50 text-indigo-700"
                     : "border-transparent bg-gray-100 text-gray-600"
                 }`}
               >
@@ -362,7 +367,7 @@ export const SplitPdfTool = () => {
                 onClick={() => setMode("count")}
                 className={`flex-1 py-3 rounded-xl font-medium border-2 transition-all ${
                   mode === "count"
-                    ? "border-brand-500 bg-brand-50 text-brand-700"
+                    ? "border-indigo-500 bg-indigo-50 text-indigo-700"
                     : "border-transparent bg-gray-100 text-gray-600"
                 }`}
               >
@@ -382,7 +387,7 @@ export const SplitPdfTool = () => {
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 placeholder={mode === "range" ? "1-5" : "2"}
-                className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none transition-all"
+                className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
               />
               <p className="text-xs text-gray-500 mt-2">
                 {mode === "range"
@@ -394,7 +399,7 @@ export const SplitPdfTool = () => {
             <button
               type="button"
               onClick={handleSplit}
-              className="w-full py-5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-lg shadow-brand-200 transition-all text-lg"
+              className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all text-lg"
             >
               Split PDF
             </button>
@@ -447,7 +452,7 @@ export const PdfToImgTool = () => {
           <button
             type="button"
             onClick={handleConvert}
-            className="px-8 py-4 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5 text-lg"
+            className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5 text-lg"
           >
             Convert to Images
           </button>
@@ -465,7 +470,7 @@ export const PdfToImgTool = () => {
                 <a
                   href={img}
                   download={`page-${idx + 1}.jpg`}
-                  className="p-3 bg-white rounded-full text-brand-600 hover:scale-110 transition-transform"
+                  className="p-3 bg-white rounded-full text-indigo-600 hover:scale-110 transition-transform"
                 >
                   <Download size={24} />
                 </a>
@@ -926,7 +931,7 @@ export const AnnotateTool = () => {
               >
                 <div className="bg-white p-3 rounded-lg shadow-xl border border-gray-200 w-64">
                   <textarea
-                    className="w-full text-sm border border-gray-200 rounded p-2 mb-2 outline-none focus:border-brand-500"
+                    className="w-full text-sm border border-gray-200 rounded p-2 mb-2 outline-none focus:border-indigo-500"
                     placeholder="Enter your comment..."
                     rows={3}
                     value={tempText}
@@ -943,13 +948,13 @@ export const AnnotateTool = () => {
                     <button
                       type="button"
                       onClick={saveAnnotation}
-                      className="text-xs bg-brand-600 text-white px-3 py-1 rounded hover:bg-brand-700"
+                      className="text-xs bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700"
                     >
                       Add
                     </button>
                   </div>
                 </div>
-                <div className="w-3 h-3 bg-brand-600 rounded-full border-2 border-white shadow-sm absolute bottom-[-6px] left-1/2 -translate-x-1/2 translate-y-full"></div>
+                <div className="w-3 h-3 bg-indigo-600 rounded-full border-2 border-white shadow-sm absolute bottom-[-6px] left-1/2 -translate-x-1/2 translate-y-full"></div>
               </div>
             )}
           </div>
@@ -968,7 +973,7 @@ export const AnnotateTool = () => {
             <button
               type="button"
               onClick={handleDownload}
-              className="px-10 py-4 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-lg shadow-brand-200 min-w-[200px] transition-all transform hover:-translate-y-0.5"
+              className="px-10 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 min-w-[200px] transition-all transform hover:-translate-y-0.5"
             >
               Save Document
             </button>
@@ -1119,23 +1124,25 @@ export const OcrTool = () => {
 // --- Compress PDF Tool ---
 export const CompressPdfTool = () => {
   const [file, setFile] = useState<File | null>(null);
-  const [quality, setQuality] = useState(0.7);
+  const [preset, setPreset] = useState<"screen" | "ebook" | "printer" | "prepress">("ebook");
   const [processing, setProcessing] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
 
   const handleCompress = async () => {
     if (!file) return;
     setProcessing(true);
+    setStatus(null);
     try {
-      const bytes = await pdfUtils.compressPdf(file, quality);
-      const blob = uint8ArrayToBlob(bytes);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `compressed_${file.name}`;
-      link.click();
+      const job = await compressPdfOnServer(file, preset);
+      const blob = await downloadCompletedPdfJob(job);
+      downloadBlob(blob, job.resultFilename || `compressed_${file.name}`);
+      const reduction = typeof job.reductionPercent === "number" ? ` (${job.reductionPercent}% smaller)` : "";
+      setStatus(`Ghostscript compression complete${reduction}.`);
     } catch (e) {
       console.error(e);
-      alert("압축 중 오류가 발생했습니다.");
+      const message = e instanceof Error ? e.message : "압축 중 오류가 발생했습니다.";
+      setStatus(message);
+      alert(message);
     } finally {
       setProcessing(false);
     }
@@ -1149,7 +1156,7 @@ export const CompressPdfTool = () => {
       description={getToolByRoute("/compress")?.shortDesc} 
       isProcessing={processing}
       progressLabel="Compressing PDF..."
-      progressSubLabel={`Optimizing ${file ? 1 : 0} file at ${Math.round((1 - quality) * 100)}% level`}
+      progressSubLabel={`Server Ghostscript preset: ${preset}`}
     >
       {!file ? (
         <FileUpload onFilesSelected={(f) => setFile(f[0])} accept=".pdf" />
@@ -1157,30 +1164,32 @@ export const CompressPdfTool = () => {
         <div className="max-w-xl mx-auto">
           <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm text-center">
             <h3 className="text-lg font-bold mb-4">{file.name}</h3>
-            <div className="mb-8">
-              <label htmlFor="compression-level" className="block text-sm font-medium text-gray-700 mb-2">
-                Compression Level: {Math.round((1 - quality) * 100)}%
+            <div className="mb-8 text-left">
+              <label htmlFor="compression-preset" className="block text-sm font-medium text-gray-700 mb-2">
+                Ghostscript compression preset
               </label>
-              <input
-                id="compression-level"
-                type="range"
-                min="0.1"
-                max="1.0"
-                step="0.1"
-                value={quality}
-                onChange={(e) => setQuality(parseFloat(e.target.value))}
-                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-              />
-              <div className="flex justify-between text-xs text-gray-500 mt-2">
-                <span>Extreme (Low Quality)</span>
-                <span>Recommended</span>
-                <span>Low (High Quality)</span>
-              </div>
+              <select
+                id="compression-preset"
+                value={preset}
+                onChange={(e) => setPreset(e.target.value as "screen" | "ebook" | "printer" | "prepress")}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2"
+                disabled={processing}
+              >
+                <option value="screen">Screen - smallest file</option>
+                <option value="ebook">Ebook - balanced</option>
+                <option value="printer">Printer - high quality</option>
+                <option value="prepress">Prepress - highest quality</option>
+              </select>
+              <p className="mt-3 rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs text-amber-800">
+                This uploads the PDF to the DocuFlow server and uses Ghostscript. It does not use the old browser raster fallback.
+              </p>
+              {status && <p className="mt-3 text-sm text-gray-600">{status}</p>}
             </div>
             <button
               type="button"
               onClick={handleCompress}
-              className="w-full py-5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-lg text-lg transition-all"
+              disabled={processing}
+              className="w-full py-5 bg-rose-600 hover:bg-rose-700 disabled:bg-gray-300 text-white font-bold rounded-xl shadow-lg text-lg transition-all"
             >
               Compress PDF
             </button>
@@ -1229,7 +1238,7 @@ const SortablePageThumbnail = ({ page, onRotate, onRemove }: any) => {
               e.stopPropagation();
               onRotate();
             }}
-            className="p-2 bg-white rounded-full text-gray-700 hover:text-brand-600"
+            className="p-2 bg-white rounded-full text-gray-700 hover:text-indigo-600"
           >
             <RotateCw size={16} />
           </button>
@@ -1364,7 +1373,7 @@ export const OrganizePdfTool = () => {
             <button
               type="button"
               onClick={handleSave}
-              className="px-6 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-md transition-all font-medium"
+              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md transition-all font-medium"
             >
               Save Changes
             </button>

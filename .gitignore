@@ -33,4 +33,6 @@ metadata.json
 *.sw?
 
 docs
+server-runtime/
+report/
 deploy.*

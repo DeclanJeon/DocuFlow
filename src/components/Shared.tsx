@@ -19,18 +19,18 @@ export const ToolCard: React.FC<ToolCardProps> = ({
 }) => (
   <Link
     to={to}
-    className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-brand-200 hover:shadow-xl"
+    className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-lg"
   >
-    <div className="pointer-events-none absolute inset-x-0 -top-12 h-24 bg-gradient-to-b from-brand-50 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+    <div className="pointer-events-none absolute inset-x-0 -top-12 h-24 bg-gradient-to-b from-indigo-50 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
     <div
-      className={`relative z-10 mb-4 flex h-12 w-12 items-center justify-center rounded-xl ${colorClass} transition-transform group-hover:scale-110`}
+      className={`relative z-10 mb-4 inline-flex h-11 w-11 items-center justify-center rounded-lg ${colorClass} shadow-sm`}
     >
-      <Icon size={24} className="text-white" />
+      <Icon size={20} className="text-white" />
     </div>
-    <h3 className="relative z-10 mb-2 text-lg font-bold text-slate-900 transition-colors group-hover:text-brand-600">
+    <h3 className="relative z-10 mb-1.5 text-base font-semibold tracking-tight text-gray-900 transition-colors group-hover:text-indigo-600">
       {title}
     </h3>
-    <p className="relative z-10 text-sm leading-relaxed text-slate-600">{description}</p>
+    <p className="relative z-10 text-sm leading-relaxed text-gray-500">{description}</p>
   </Link>
 );
 

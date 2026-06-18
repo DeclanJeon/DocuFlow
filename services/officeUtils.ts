@@ -7,6 +7,7 @@ import {
 import { saveAs } from "file-saver";
 import mammoth from "mammoth";
 import * as pdfjsLib from "pdfjs-dist";
+import { configurePdfJs } from "./pdf/pdfLoader";
 import JSZip from "jszip";
 
 export type ProgressCallback = (current: number, total: number, message?: string) => void;
@@ -21,8 +22,7 @@ type ManifestEntry = {
   mediaType: string;
 };
 
-// PDF.js 워커 설정 (pdfUtils.ts와 동일하게 설정)
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.mjs`;
+configurePdfJs();
 
 /**
  * PDF to DOCX: 텍스트 추출 기반의 단순 변환

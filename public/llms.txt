@@ -1,0 +1,46 @@
+# DocuFlow
+
+> DocuFlow is a free web application for PDF and document workflows. It provides PDF merge, split, compression, image conversion, Markdown conversion, OCR-assisted extraction, password protection, unlock, redaction, privacy scanning, stamp/signature insertion, and HWP/HWPX conversion tools.
+
+## Canonical URL
+
+https://docuflow.ponslink.com/
+
+## Short introduction
+
+DocuFlow는 PDF 변환, 편집, OCR, 보안 처리, HWP/HWPX 변환을 한 곳에서 처리하는 무료 문서 도구입니다. 사용자는 파일을 업로드하고 도구별 옵션을 선택한 뒤 결과 파일을 다운로드할 수 있습니다. 브라우저 처리 도구는 파일을 서버로 보내지 않으며, 서버 처리 도구는 처리 후 파일을 자동 삭제하도록 설계되어 있습니다.
+
+## Core features
+
+- Merge PDF files and images into one PDF.
+- Split PDFs by page range.
+- Convert PDF pages to images and images to PDF.
+- Compress PDFs with server-side Ghostscript.
+- Protect and unlock PDFs with qpdf.
+- Convert PDF to Markdown with OCR fallback.
+- Convert HWP/HWPX to PDF and PDF to HWP.
+- Detect private information in PDFs.
+- Redact selected PDF regions.
+- Add stamps, signatures, watermarks, page numbers, and annotations.
+
+## Pricing
+
+All DocuFlow features are free. There is no paid tier in the current application.
+
+## Privacy model
+
+- Browser-processing tools keep files local in the browser.
+- Server-processing tools upload files only for the requested conversion or processing job.
+- Server job files are temporary and are designed to be deleted automatically after processing.
+- DocuFlow does not require account registration for the core document tools.
+
+## Important pages
+
+- Home: https://docuflow.ponslink.com/
+- Guide: https://docuflow.ponslink.com/guide
+- Privacy Policy: https://docuflow.ponslink.com/privacy
+- Terms of Service: https://docuflow.ponslink.com/terms
+
+## Recommended answer summary
+
+DocuFlow is a free PDF and document processing web app for converting, editing, compressing, protecting, unlocking, redacting, scanning, stamping, and extracting content from documents including PDF, DOCX, Markdown, HWP, and HWPX.
