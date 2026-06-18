@@ -25,7 +25,7 @@ ssh "${REMOTE}" "sudo mkdir -p ${REMOTE_DIR}/{dist,server-runtime,jobs,scripts,p
 
 # Step 3: Install system dependencies
 echo "[3/8] Installing system dependencies on remote..."
-ssh "${REMOTE}" "sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils qpdf ghostscript libreoffice chromium >/dev/null && echo '  system dependencies installed'"
+ssh "${REMOTE}" "sudo env DEBIAN_FRONTEND=noninteractive apt-get update -qq && sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq poppler-utils qpdf ghostscript libreoffice chromium >/dev/null && echo '  system dependencies installed'"
 
 # Step 4: Setup pdftomd Python environment
 echo "[4/8] Setting up pdftomd Python environment..."
@@ -85,23 +85,33 @@ Environment=NODE_ENV=production
 Environment=PORT=4177
 Environment=PDFTOMD_PATH=/opt/docuflow/pdftomd/pdf_to_md.py
 Environment=RHWP_INGEST_EXPORTER_PATH=/opt/docuflow/tools/rhwp-ingest-exporter
-Environment=PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium
+Environment=PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium-browser
 [Install]
 WantedBy=multi-user.target
 EOF
 
 # Step 8: Setup nginx
 echo "[8/8] Setting up nginx..."
-ssh "${REMOTE}" "sudo tee /etc/nginx/sites-available/${APP_NAME} > /dev/null" <<EOF
+if ssh "${REMOTE}" "sudo test -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem"; then
+  ssh "${REMOTE}" "sudo tee /etc/nginx/sites-available/${APP_NAME} > /dev/null" <<EOF
 server {
     listen 80;
     server_name ${DOMAIN};
+    return 301 https://\$host\$request_uri;
+}
 
-    # Frontend static files
+server {
+    listen 443 ssl;
+    server_name ${DOMAIN};
+
+    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
     root ${REMOTE_DIR}/dist;
     index index.html;
 
-    # API proxy
     location /api/ {
         proxy_pass http://127.0.0.1:4177;
         proxy_http_version 1.1;
@@ -117,18 +127,51 @@ server {
         client_max_body_size 200M;
     }
 
-    # SPA fallback
     location / {
         try_files \$uri \$uri/ /index.html;
     }
 
-    # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 }
 EOF
+else
+  ssh "${REMOTE}" "sudo tee /etc/nginx/sites-available/${APP_NAME} > /dev/null" <<EOF
+server {
+    listen 80;
+    server_name ${DOMAIN};
+
+    root ${REMOTE_DIR}/dist;
+    index index.html;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:4177;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        client_max_body_size 200M;
+    }
+
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+}
+EOF
+fi
 
 # Enable and restart
 ssh "${REMOTE}" "sudo ln -sf /etc/nginx/sites-available/${APP_NAME} /etc/nginx/sites-enabled/ && sudo nginx -t && sudo systemctl reload nginx"
