@@ -26,6 +26,7 @@ import {
   pollPdfToMarkdownJob,
   submitPdfToMarkdownJob,
   type PdfMarkdownDiagnostics,
+  type PdfMarkdownOcrAccuracy,
   type PdfMarkdownOcrProfile,
 } from "../../services/api/markdownApi";
 import {
@@ -1020,6 +1021,7 @@ export const OcrTool = () => {
   const [resultText, setResultText] = useState("");
   const [outputMode, setOutputMode] = useState<"text" | "searchable-pdf">("text");
   const [ocrProfile, setOcrProfile] = useState<PdfMarkdownOcrProfile>("none");
+  const [ocrAccuracy, setOcrAccuracy] = useState<PdfMarkdownOcrAccuracy>("accurate");
   const [ocrDiagnostics, setOcrDiagnostics] = useState<PdfMarkdownDiagnostics | undefined>();
   const [resultNotice, setResultNotice] = useState("");
   const [processing, setProcessing] = useState(false);
@@ -1074,10 +1076,11 @@ export const OcrTool = () => {
         updateStep("done", "completed");
       } else {
         const job = await submitPdfToMarkdownJob(fileToSend, {
-          mode: "accurate",
+          mode: ocrAccuracy === "fast" ? "balanced" : "accurate",
           ocrEngine: "tesseract",
           output: "single",
           ocrProfile,
+          ocrAccuracy,
         });
         const completed = await pollPdfToMarkdownJob(job.jobId, job.downloadToken, () => undefined, 1000);
         if (completed.status !== "completed") {
@@ -1174,26 +1177,47 @@ export const OcrTool = () => {
             </div>
 
             {outputMode === "text" && !resultText && !resultNotice && (
-              <div className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
-                <label className="text-sm font-medium text-gray-700">
-                  Document profile
-                  <select
-                    value={ocrProfile}
-                    onChange={(event) => setOcrProfile(event.target.value as PdfMarkdownOcrProfile)}
-                    disabled={processing}
-                    className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2"
-                  >
-                    <option value="none">General document — no document-specific corrections</option>
-                    <option value="korean-public-document">Korean public document — opt-in form cleanup</option>
-                    <option value="receipt">Receipt</option>
-                    <option value="contract">Contract</option>
-                    <option value="book-scan">Book scan</option>
-                    <option value="table-heavy">Table-heavy document</option>
-                  </select>
-                </label>
-                <p className="mt-2 text-xs text-gray-500">
-                  General mode keeps OCR document-neutral. Use a profile only when the document type is known.
-                </p>
+              <div className="mb-4 grid gap-4 md:grid-cols-2">
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <label className="text-sm font-medium text-gray-700">
+                    OCR accuracy
+                    <select
+                      value={ocrAccuracy}
+                      onChange={(event) => setOcrAccuracy(event.target.value as PdfMarkdownOcrAccuracy)}
+                      disabled={processing}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2"
+                    >
+                      <option value="fast">Fast — minimum OCR candidate budget</option>
+                      <option value="balanced">Balanced — light DPI retry</option>
+                      <option value="accurate">Accurate — default OCR candidate set</option>
+                      <option value="max">Max — highest candidate budget</option>
+                    </select>
+                  </label>
+                  <p className="mt-2 text-xs text-gray-500">
+                    Higher accuracy tries more renderer/DPI candidates and takes longer.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <label className="text-sm font-medium text-gray-700">
+                    Document profile
+                    <select
+                      value={ocrProfile}
+                      onChange={(event) => setOcrProfile(event.target.value as PdfMarkdownOcrProfile)}
+                      disabled={processing}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2"
+                    >
+                      <option value="none">General document — no document-specific corrections</option>
+                      <option value="korean-public-document">Korean public document — opt-in form cleanup</option>
+                      <option value="receipt">Receipt</option>
+                      <option value="contract">Contract</option>
+                      <option value="book-scan">Book scan</option>
+                      <option value="table-heavy">Table-heavy document</option>
+                    </select>
+                  </label>
+                  <p className="mt-2 text-xs text-gray-500">
+                    General mode keeps OCR document-neutral. Use a profile only when the document type is known.
+                  </p>
+                </div>
               </div>
             )}
             {!resultText && !resultNotice && (
@@ -1230,9 +1254,22 @@ export const OcrTool = () => {
                 <p className="font-semibold text-gray-900 mb-2">OCR diagnostics</p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                   <p>Profile: {ocrDiagnostics.ocrProfile || ocrProfile}</p>
+                  <p>Accuracy: {ocrDiagnostics.ocrAccuracy || ocrAccuracy}</p>
+                  <p>Renderer: {ocrDiagnostics.renderer || "unknown"}</p>
                   <p>Confidence: {typeof ocrDiagnostics.meanConfidence === "number" ? `${ocrDiagnostics.meanConfidence.toFixed(1)}%` : "unknown"}</p>
                   <p>Low-confidence lines: {ocrDiagnostics.lowConfidenceLineCount ?? "unknown"}</p>
+                  <p>DPI candidates: {ocrDiagnostics.dpiCandidates?.join(", ") || "unknown"}</p>
                 </div>
+                {ocrDiagnostics.lowConfidenceLinePreview?.length ? (
+                  <div className="mt-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Low-confidence preview</p>
+                    <ul className="mt-1 list-disc list-inside text-xs text-amber-800">
+                      {ocrDiagnostics.lowConfidenceLinePreview.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </div>
             )}
             {resultText && (

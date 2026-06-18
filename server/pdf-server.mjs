@@ -518,11 +518,15 @@ const normalizeOcrProfile = (value) => {
 
 const mapPdfToMarkdownArgs = (fields, inputPath, outputPath) => {
   const mode = typeof fields.mode === "string" ? fields.mode : "balanced";
+  const requestedAccuracy = typeof fields.ocrAccuracy === "string" ? fields.ocrAccuracy.trim() : "";
+  const ocrAccuracy = requestedAccuracy === "fast" || requestedAccuracy === "balanced" || requestedAccuracy === "accurate" || requestedAccuracy === "max"
+    ? requestedAccuracy
+    : mode;
   const requestedEngine = typeof fields.ocrEngine === "string" ? fields.ocrEngine : "none";
   const ocrEngine = requestedEngine === "tesseract" || requestedEngine === "rapidocr" ? requestedEngine : "none";
   const splitEvery = Number.parseInt(String(fields.splitEvery || ""), 10);
   const ocrProfile = normalizeOcrProfile(fields.ocrProfile);
-  const args = [PDFTOMD_SCRIPT_PATH, inputPath, "-o", outputPath, "--force", "--progress-format", "jsonl", "--ocr-profile", ocrProfile];
+  const args = [PDFTOMD_SCRIPT_PATH, inputPath, "-o", outputPath, "--force", "--progress-format", "jsonl", "--ocr-profile", ocrProfile, "--ocr-accuracy", ocrAccuracy];
 
   if (ocrEngine !== "none" && mode === "balanced") {
     args.push("--ocr", "auto", "--ocr-engine", ocrEngine);
@@ -534,7 +538,7 @@ const mapPdfToMarkdownArgs = (fields, inputPath, outputPath) => {
     args.push("--split-every", String(splitEvery));
   }
 
-  return { args, mode, ocrEngine, ocrProfile, splitEvery: Number.isFinite(splitEvery) && splitEvery > 0 ? splitEvery : undefined };
+  return { args, mode, ocrEngine, ocrProfile, ocrAccuracy, splitEvery: Number.isFinite(splitEvery) && splitEvery > 0 ? splitEvery : undefined };
 };
 
 const collectMarkdownOutputs = async (jobDir, outputBasePath) => {
@@ -590,12 +594,13 @@ const enrichMarkdownDiagnostics = (diagnostics) => {
     const weakAfter = /weak_pages_after_pdfplumber=(\d+)/.exec(warning);
     if (weakBefore) diagnostics.weakPagesBeforeLayout = Number(weakBefore[1]);
     if (weakAfter) diagnostics.weakPagesAfterLayout = Number(weakAfter[1]);
-    const tesseractCandidate = /mode=tesseract_candidate .*language=([^\s]+) psm=([^\s]+) mean_confidence=([0-9.]+) low_confidence_lines=(\d+) score=([0-9.]+)/.exec(warning);
+    const tesseractCandidate = /mode=tesseract_candidate .*language=([^\s]+) psm=([^\s]+) mean_confidence=([0-9.]+) low_confidence_lines=(\d+) low_confidence_preview=(.*) score=([0-9.]+)/.exec(warning);
     if (tesseractCandidate) {
       diagnostics.ocrPipeline = "v2";
       diagnostics.language = tesseractCandidate[1];
       diagnostics.meanConfidence = Number(tesseractCandidate[3]);
       diagnostics.lowConfidenceLineCount = Number(tesseractCandidate[4]);
+      diagnostics.lowConfidenceLinePreview = tesseractCandidate[5] === "none" ? [] : tesseractCandidate[5].split(" | ").filter(Boolean);
       diagnostics.candidateSummary = diagnostics.candidateSummary || [];
       diagnostics.candidateSummary.push({
         engine: "tesseract",
@@ -603,8 +608,15 @@ const enrichMarkdownDiagnostics = (diagnostics) => {
         psm: tesseractCandidate[2],
         meanConfidence: Number(tesseractCandidate[3]),
         lowConfidenceLines: Number(tesseractCandidate[4]),
-        score: Number(tesseractCandidate[5]),
+        lowConfidencePreview: diagnostics.lowConfidenceLinePreview,
+        score: Number(tesseractCandidate[6]),
       });
+    }
+    const renderer = /mode=ocr_renderer .*renderer=([^\s]+) dpi_candidates=([0-9,]+) accuracy=([^\s]+)/.exec(warning);
+    if (renderer) {
+      diagnostics.renderer = renderer[1];
+      diagnostics.dpiCandidates = renderer[2].split(",").map((value) => Number(value)).filter((value) => Number.isFinite(value));
+      diagnostics.ocrAccuracy = renderer[3];
     }
   }
   if (!diagnostics.engine && diagnostics.ocrEngine && diagnostics.ocrEngine !== "none") diagnostics.engine = diagnostics.ocrEngine;
@@ -622,10 +634,11 @@ const runPdfToMarkdownJob = async (job, fields, file) => {
     progressEvents: [],
   };
   await fsp.mkdir(pdftomdCwd, { recursive: true });
-  const { args, mode, ocrEngine, ocrProfile, splitEvery } = mapPdfToMarkdownArgs(fields, file.path, outputBasePath);
+  const { args, mode, ocrEngine, ocrProfile, ocrAccuracy, splitEvery } = mapPdfToMarkdownArgs(fields, file.path, outputBasePath);
   diagnostics.mode = mode;
   diagnostics.ocrEngine = ocrEngine;
   diagnostics.ocrProfile = ocrProfile;
+  diagnostics.ocrAccuracy = ocrAccuracy;
   diagnostics.splitEvery = splitEvery;
 
   job.progress = { percent: 1, stage: "queued", message: "Starting pdftomd" };

@@ -165,11 +165,14 @@ const main = async () => {
   assert(zip.contentType.includes('zip'), 'split markdown did not return zip');
 
   if (ocrFixture && readyPayload.dependencies?.pdftomd?.ocr?.availableEngines?.includes('rapidocr')) {
-    const ocrJob = await postPdf('/api/convert/pdf-to-markdown', { mode: 'accurate', output: 'single', ocrEngine: 'rapidocr' }, ocrFixture.bytes, 'regression-ocr-scanned.pdf');
-    await waitJob(ocrJob);
+    const ocrJob = await postPdf('/api/convert/pdf-to-markdown', { mode: 'accurate', output: 'single', ocrEngine: 'rapidocr', ocrProfile: 'none', ocrAccuracy: 'balanced' }, ocrFixture.bytes, 'regression-ocr-scanned.pdf');
+    const ocrCompleted = await waitJob(ocrJob);
     const ocrMarkdown = await downloadJob(ocrJob);
     const normalizedOcrMarkdown = ocrMarkdown.bytes.toString('utf8').replace(/\s+/g, ' ').toUpperCase();
     assert(normalizedOcrMarkdown.includes('12345') && normalizedOcrMarkdown.includes('FALLBACK'), 'OCR markdown did not include scanned text markers');
+    assert(ocrCompleted.diagnostics?.ocrProfile === 'none', 'OCR diagnostics did not preserve general profile');
+    assert(ocrCompleted.diagnostics?.ocrAccuracy === 'balanced', 'OCR diagnostics did not preserve accuracy selection');
+    assert(typeof ocrCompleted.diagnostics?.meanConfidence === 'number', 'OCR diagnostics did not include mean confidence');
   }
 
   const hwpPdfJob = await postPdf('/api/convert/hwp-to-pdf', {}, hwpxFixture.bytes, 'regression-smoke.hwpx');

@@ -2,12 +2,14 @@ export type PdfMarkdownMode = "fast" | "balanced" | "accurate";
 export type PdfMarkdownOcrEngine = "none" | "rapidocr" | "tesseract";
 export type PdfMarkdownOutput = "single" | "zip";
 export type PdfMarkdownOcrProfile = "none" | "korean-public-document" | "receipt" | "contract" | "book-scan" | "table-heavy";
+export type PdfMarkdownOcrAccuracy = "fast" | "balanced" | "accurate" | "max";
 export type PdfMarkdownJobStatus = "queued" | "processing" | "completed" | "failed" | "cancelled" | "expired";
 
 export interface PdfMarkdownSubmitOptions {
   mode: PdfMarkdownMode;
   ocrEngine: PdfMarkdownOcrEngine;
   ocrProfile?: PdfMarkdownOcrProfile;
+  ocrAccuracy?: PdfMarkdownOcrAccuracy;
   splitEvery?: number;
   output: PdfMarkdownOutput;
 }
@@ -18,6 +20,7 @@ export interface PdfMarkdownCandidateSummary {
   psm?: string;
   meanConfidence?: number;
   lowConfidenceLines?: number;
+  lowConfidencePreview?: string[];
   score?: number;
 }
 
@@ -30,9 +33,13 @@ export interface PdfMarkdownDiagnostics {
   outputFiles?: string[];
   ocrPipeline?: string;
   ocrProfile?: string;
+  ocrAccuracy?: string;
+  renderer?: string;
+  dpiCandidates?: number[];
   language?: string;
   meanConfidence?: number;
   lowConfidenceLineCount?: number;
+  lowConfidenceLinePreview?: string[];
   candidateSummary?: PdfMarkdownCandidateSummary[];
 }
 
@@ -105,6 +112,7 @@ const readCandidateSummary = (record: Record<string, unknown>) => {
     psm: readString(item, "psm"),
     meanConfidence: readNumber(item, "meanConfidence"),
     lowConfidenceLines: readNumber(item, "lowConfidenceLines"),
+    lowConfidencePreview: readStringArray(item, "lowConfidencePreview"),
     score: readNumber(item, "score"),
   }));
 };
@@ -134,9 +142,13 @@ const parseDiagnostics = (value: unknown): PdfMarkdownDiagnostics | undefined =>
     outputFiles: readStringArray(value, "outputFiles"),
     ocrPipeline: readString(value, "ocrPipeline"),
     ocrProfile: readString(value, "ocrProfile"),
+    ocrAccuracy: readString(value, "ocrAccuracy"),
+    renderer: readString(value, "renderer"),
+    dpiCandidates: readNumberArray(value, "dpiCandidates"),
     language: readString(value, "language"),
     meanConfidence: readNumber(value, "meanConfidence"),
     lowConfidenceLineCount: readNumber(value, "lowConfidenceLineCount"),
+    lowConfidenceLinePreview: readStringArray(value, "lowConfidenceLinePreview"),
     candidateSummary: readCandidateSummary(value),
   };
 };
@@ -247,6 +259,9 @@ export const submitPdfToMarkdownJob = async (
   }
   if (options.ocrProfile) {
     formData.append("ocrProfile", options.ocrProfile);
+  }
+  if (options.ocrAccuracy) {
+    formData.append("ocrAccuracy", options.ocrAccuracy);
   }
 
   const response = await fetch("/api/convert/pdf-to-markdown", {
