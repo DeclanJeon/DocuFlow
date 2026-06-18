@@ -35,7 +35,7 @@ const MULTIPART_OVERHEAD_LIMIT = 1024 * 1024;
 const PROCESS_TIMEOUT_MS = 120_000;
 const COMPLETE = new Set(["completed", "failed", "expired"]);
 const COMPRESS_PRESETS = new Set(["screen", "ebook", "printer", "prepress"]);
-const PREFERRED_TESSERACT_LANGUAGES = ["kor", "eng", "chi_sim", "chi_tra"];
+const PREFERRED_TESSERACT_LANGUAGES = ["kor", "eng"];
 const REQUIRED_SEARCHABLE_LANGUAGES = ["kor", "eng"];
 
 
@@ -127,7 +127,7 @@ const listTesseractLanguages = async () => {
   }
 };
 
-const resolveCjkOcrLanguages = async () => {
+const resolveDefaultOcrLanguages = async () => {
   const available = await listTesseractLanguages();
   const selected = PREFERRED_TESSERACT_LANGUAGES.filter((language) => available.has(language));
   for (const required of REQUIRED_SEARCHABLE_LANGUAGES) {
@@ -681,7 +681,7 @@ const runSearchablePdfJob = async (job, fields, file) => {
 
   const language = typeof fields.language === "string" && fields.language.trim()
     ? fields.language.trim()
-    : await resolveCjkOcrLanguages();
+    : await resolveDefaultOcrLanguages();
   const optimize = typeof fields.optimize === "string" ? fields.optimize : "1";
   const outputPath = path.join(job.jobDir, "searchable.pdf");
   const tempOutput = path.join(job.jobDir, "searchable.tmp.pdf");
