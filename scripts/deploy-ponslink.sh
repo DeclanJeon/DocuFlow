@@ -21,11 +21,11 @@ echo "  Build complete."
 
 # Step 2: Prepare remote directory
 echo "[2/8] Preparing remote directory..."
-ssh "${REMOTE}" "sudo mkdir -p ${REMOTE_DIR}/{dist,server-runtime,scripts,pdftomd} && sudo chown -R \$(whoami):\$(whoami) ${REMOTE_DIR}"
+ssh "${REMOTE}" "sudo mkdir -p ${REMOTE_DIR}/{dist,server-runtime,jobs,scripts,pdftomd,tools} && sudo chown -R \$(whoami):\$(whoami) ${REMOTE_DIR}"
 
-# Step 3: Install system dependencies (Poppler for pdf2image OCR)
+# Step 3: Install system dependencies
 echo "[3/8] Installing system dependencies on remote..."
-ssh "${REMOTE}" "sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils >/dev/null 2>&1 && echo '  poppler-utils installed' || echo '  WARNING: poppler-utils install failed — OCR will be unavailable'"
+ssh "${REMOTE}" "sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils qpdf ghostscript libreoffice chromium >/dev/null && echo '  system dependencies installed'"
 
 # Step 4: Setup pdftomd Python environment
 echo "[4/8] Setting up pdftomd Python environment..."
@@ -49,13 +49,15 @@ rsync -avz \
   server/ \
   "${REMOTE}:${REMOTE_DIR}/server/"
 
-rsync -avz \
-  server-runtime/ \
-  "${REMOTE}:${REMOTE_DIR}/server-runtime/" 2>/dev/null || true
+ssh "${REMOTE}" "mkdir -p ${REMOTE_DIR}/server-runtime/jobs ${REMOTE_DIR}/server-runtime/fixtures"
 
 rsync -avz \
   ../pdftomd/cli/ \
   "${REMOTE}:${REMOTE_DIR}/pdftomd/"
+
+rsync -avz \
+  ../pdf-master/tools/rhwp-ingest-exporter/target/release/rhwp-ingest-exporter \
+  "${REMOTE}:${REMOTE_DIR}/tools/"
 
 rsync -avz \
   package.json \
@@ -82,7 +84,8 @@ RestartSec=5
 Environment=NODE_ENV=production
 Environment=PORT=4177
 Environment=PDFTOMD_PATH=/opt/docuflow/pdftomd/pdf_to_md.py
-
+Environment=RHWP_INGEST_EXPORTER_PATH=/opt/docuflow/tools/rhwp-ingest-exporter
+Environment=PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium
 [Install]
 WantedBy=multi-user.target
 EOF
