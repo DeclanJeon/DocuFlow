@@ -63,6 +63,10 @@ rsync -avz \
   package.json \
   "${REMOTE}:${REMOTE_DIR}/"
 
+rsync -avz \
+  scripts/ \
+  "${REMOTE}:${REMOTE_DIR}/scripts/"
+
 # Step 6: Install dependencies on remote
 echo "[6/8] Installing dependencies on remote..."
 ssh "${REMOTE}" "cd ${REMOTE_DIR} && npm install --production 2>/dev/null || npm install"
