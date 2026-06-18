@@ -594,22 +594,23 @@ const enrichMarkdownDiagnostics = (diagnostics) => {
     const weakAfter = /weak_pages_after_pdfplumber=(\d+)/.exec(warning);
     if (weakBefore) diagnostics.weakPagesBeforeLayout = Number(weakBefore[1]);
     if (weakAfter) diagnostics.weakPagesAfterLayout = Number(weakAfter[1]);
-    const tesseractCandidate = /mode=tesseract_candidate .*language=([^\s]+) psm=([^\s]+) mean_confidence=([0-9.]+) low_confidence_lines=(\d+) low_confidence_preview=(.*) score=([0-9.]+)/.exec(warning);
+    const tesseractCandidate = /mode=tesseract_candidate .*language=([^\s]+) psm=([^\s]+)(?: candidates_used=(\d+))? mean_confidence=([0-9.]+) low_confidence_lines=(\d+) low_confidence_preview=(.*) score=([0-9.]+)/.exec(warning);
     if (tesseractCandidate) {
       diagnostics.ocrPipeline = "v2";
       diagnostics.language = tesseractCandidate[1];
-      diagnostics.meanConfidence = Number(tesseractCandidate[3]);
-      diagnostics.lowConfidenceLineCount = Number(tesseractCandidate[4]);
-      diagnostics.lowConfidenceLinePreview = tesseractCandidate[5] === "none" ? [] : tesseractCandidate[5].split(" | ").filter(Boolean);
+      diagnostics.candidatesUsed = tesseractCandidate[3] ? Number(tesseractCandidate[3]) : 1;
+      diagnostics.meanConfidence = Number(tesseractCandidate[4]);
+      diagnostics.lowConfidenceLineCount = Number(tesseractCandidate[5]);
+      diagnostics.lowConfidenceLinePreview = tesseractCandidate[6] === "none" ? [] : tesseractCandidate[6].split(" | ").filter(Boolean);
       diagnostics.candidateSummary = diagnostics.candidateSummary || [];
       diagnostics.candidateSummary.push({
         engine: "tesseract",
         language: tesseractCandidate[1],
         psm: tesseractCandidate[2],
-        meanConfidence: Number(tesseractCandidate[3]),
-        lowConfidenceLines: Number(tesseractCandidate[4]),
+        meanConfidence: Number(tesseractCandidate[4]),
+        lowConfidenceLines: Number(tesseractCandidate[5]),
         lowConfidencePreview: diagnostics.lowConfidenceLinePreview,
-        score: Number(tesseractCandidate[6]),
+        score: Number(tesseractCandidate[7]),
       });
     }
     const renderer = /mode=ocr_renderer .*renderer=([^\s]+) dpi_candidates=([0-9,]+) accuracy=([^\s]+)/.exec(warning);
