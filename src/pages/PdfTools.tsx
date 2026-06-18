@@ -25,6 +25,8 @@ import {
   downloadPdfToMarkdownResult,
   pollPdfToMarkdownJob,
   submitPdfToMarkdownJob,
+  type PdfMarkdownDiagnostics,
+  type PdfMarkdownOcrProfile,
 } from "../../services/api/markdownApi";
 import {
   createSearchablePdfOnServer,
@@ -1017,6 +1019,8 @@ export const OcrTool = () => {
   const [file, setFile] = useState<File | null>(null);
   const [resultText, setResultText] = useState("");
   const [outputMode, setOutputMode] = useState<"text" | "searchable-pdf">("text");
+  const [ocrProfile, setOcrProfile] = useState<PdfMarkdownOcrProfile>("none");
+  const [ocrDiagnostics, setOcrDiagnostics] = useState<PdfMarkdownDiagnostics | undefined>();
   const [resultNotice, setResultNotice] = useState("");
   const [processing, setProcessing] = useState(false);
   
@@ -1036,6 +1040,7 @@ export const OcrTool = () => {
     
     setResultText("");
     setResultNotice("");
+    setOcrDiagnostics(undefined);
     setOcrSteps([
       { id: "prep", label: "Preparing document", status: "processing" },
       { id: "server", label: outputMode === "searchable-pdf" ? "Preserving layout with OCRmyPDF" : "Extracting text with Tesseract", status: "pending" },
@@ -1072,6 +1077,7 @@ export const OcrTool = () => {
           mode: "accurate",
           ocrEngine: "tesseract",
           output: "single",
+          ocrProfile,
         });
         const completed = await pollPdfToMarkdownJob(job.jobId, job.downloadToken, () => undefined, 1000);
         if (completed.status !== "completed") {
@@ -1088,6 +1094,7 @@ export const OcrTool = () => {
         updateStep("done", "processing");
 
         setResultText(text);
+        setOcrDiagnostics(completed.diagnostics);
         updateStep("done", "completed");
       }
     } catch (e) {
@@ -1129,6 +1136,7 @@ export const OcrTool = () => {
                   setFile(null);
                   setResultText("");
                   setResultNotice("");
+                  setOcrDiagnostics(undefined);
                 }}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -1165,6 +1173,29 @@ export const OcrTool = () => {
               </button>
             </div>
 
+            {outputMode === "text" && !resultText && !resultNotice && (
+              <div className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
+                <label className="text-sm font-medium text-gray-700">
+                  Document profile
+                  <select
+                    value={ocrProfile}
+                    onChange={(event) => setOcrProfile(event.target.value as PdfMarkdownOcrProfile)}
+                    disabled={processing}
+                    className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2"
+                  >
+                    <option value="none">General document — no document-specific corrections</option>
+                    <option value="korean-public-document">Korean public document — opt-in form cleanup</option>
+                    <option value="receipt">Receipt</option>
+                    <option value="contract">Contract</option>
+                    <option value="book-scan">Book scan</option>
+                    <option value="table-heavy">Table-heavy document</option>
+                  </select>
+                </label>
+                <p className="mt-2 text-xs text-gray-500">
+                  General mode keeps OCR document-neutral. Use a profile only when the document type is known.
+                </p>
+              </div>
+            )}
             {!resultText && !resultNotice && (
               <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50 p-8 text-center">
                 <p className="text-gray-500 mb-2">
@@ -1194,6 +1225,16 @@ export const OcrTool = () => {
               </div>
             )}
 
+            {ocrDiagnostics && (
+              <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                <p className="font-semibold text-gray-900 mb-2">OCR diagnostics</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <p>Profile: {ocrDiagnostics.ocrProfile || ocrProfile}</p>
+                  <p>Confidence: {typeof ocrDiagnostics.meanConfidence === "number" ? `${ocrDiagnostics.meanConfidence.toFixed(1)}%` : "unknown"}</p>
+                  <p>Low-confidence lines: {ocrDiagnostics.lowConfidenceLineCount ?? "unknown"}</p>
+                </div>
+              </div>
+            )}
             {resultText && (
               <div className="flex-1 relative">
                 <label htmlFor="ocr-result-text" className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">

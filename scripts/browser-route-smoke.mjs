@@ -27,40 +27,60 @@ const requireText = (body, text, route) => {
   if (!body.includes(text)) throw new Error(`${route} did not include expected text: ${text}`);
 };
 
+const gotoRoute = async (page, route) => {
+  try {
+    await page.goto(`${BASE_URL}${route}`, { waitUntil: 'commit', timeout: 45000 });
+    await page.waitForFunction(
+      () => Boolean(document.body && document.body.innerText.trim()),
+      null,
+      { timeout: 45000 }
+    );
+  } catch (error) {
+    throw new Error(`${route} navigation failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+};
+
+
+const routeBody = async (page) => {
+  await page.waitForFunction(() => document.body.innerText.trim() !== 'Loading...', null, { timeout: 30000 });
+  return page.locator('body').innerText();
+};
+
+
 const main = async () => {
   const browser = await chromium.launch({ headless: true, executablePath: await existingChrome(), args: ['--no-sandbox', '--disable-setuid-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-  const routes = ['/', '/redact', '/privacy-scan', '/stamp', '/protect', '/unlock', '/compress', '/pdf-to-md', '/hwp-to-pdf', '/pdf-to-hwp'];
+  const routes = ['/', '/redact', '/privacy-scan', '/stamp', '/protect', '/unlock', '/compress', '/pdf-to-md', '/ocr', '/hwp-to-pdf', '/pdf-to-hwp'];
   for (const route of routes) {
-    await page.goto(`${BASE_URL}${route}`, { waitUntil: 'networkidle' });
-    const body = await page.locator('body').innerText();
-    if (body.length < 20 || body.includes('Unexpected Application Error')) throw new Error(`${route} failed route smoke`);
+    await gotoRoute(page, route);
+    const body = await routeBody(page);
+    if (body.length < 20 || body.includes('Unexpected Application Error')) throw new Error(`${route} failed route smoke: ${body.slice(0, 200)}`);
   }
 
   const fixture = path.resolve('server-runtime', 'fixtures', 'regression-smoke.pdf');
   const stamp = path.resolve('server-runtime', 'fixtures', 'stamp.png');
 
-  await page.goto(`${BASE_URL}/redact`, { waitUntil: 'networkidle' });
+  await gotoRoute(page, '/redact');
   await page.locator('input[type=file]').setInputFiles(fixture);
   await page.waitForTimeout(2500);
-  let body = await page.locator('body').innerText();
+  let body = await routeBody(page);
   requireText(body, 'Detection summary', '/redact');
   requireText(body, 'Drag on the page', '/redact');
 
-  await page.goto(`${BASE_URL}/stamp`, { waitUntil: 'networkidle' });
+  await gotoRoute(page, '/stamp');
   await page.locator('input[type=file]').setInputFiles(fixture);
   await page.waitForTimeout(1000);
   await page.locator('input[accept="image/png,image/jpeg,.png,.jpg,.jpeg"]').setInputFiles(stamp);
   await page.waitForTimeout(1500);
-  body = await page.locator('body').innerText();
+  body = await routeBody(page);
   requireText(body, 'Click or drag on the page', '/stamp');
 
-  await page.goto(`${BASE_URL}/hwp-to-pdf`, { waitUntil: 'networkidle' });
-  body = await page.locator('body').innerText();
+  await gotoRoute(page, '/hwp-to-pdf');
+  body = await routeBody(page);
   requireText(body, 'HWP', '/hwp-to-pdf');
 
-  await page.goto(`${BASE_URL}/pdf-to-hwp`, { waitUntil: 'networkidle' });
-  body = await page.locator('body').innerText();
+  await gotoRoute(page, '/pdf-to-hwp');
+  body = await routeBody(page);
   requireText(body, 'HWP', '/pdf-to-hwp');
 
   await browser.close();

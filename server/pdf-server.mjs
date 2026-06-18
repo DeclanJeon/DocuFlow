@@ -149,26 +149,32 @@ const execFileChecked = (command, args, options = {}) =>
     });
   });
 
-const BROWSER_CANDIDATES = [
+const EXPLICIT_BROWSER_CANDIDATES = [
   process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE,
   process.env.CHROME_PATH,
   process.env.CHROME_BINARY_PATH,
+].filter(Boolean);
+
+const SYSTEM_BROWSER_CANDIDATES = [
   "/usr/bin/google-chrome",
   "/usr/bin/chromium",
   "/usr/bin/chromium-browser",
   "/usr/bin/brave-browser",
-].filter(Boolean);
+];
 
 const resolveBrowserExecutable = () => {
-  for (const candidate of BROWSER_CANDIDATES) {
+  for (const candidate of EXPLICIT_BROWSER_CANDIDATES) {
     if (fs.existsSync(candidate)) return candidate;
   }
   try {
     const executablePath = chromium.executablePath();
-    return fs.existsSync(executablePath) ? executablePath : undefined;
+    if (fs.existsSync(executablePath)) return executablePath;
   } catch {
-    return undefined;
   }
+  for (const candidate of SYSTEM_BROWSER_CANDIDATES) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return undefined;
 };
 
 
@@ -179,7 +185,7 @@ const getBrowser = async () => {
       .launch({
         headless: true,
         executablePath,
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+        args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-crash-reporter", "--disable-crashpad"],
       })
       .catch((error) => {
         browserPromise = undefined;
@@ -503,12 +509,20 @@ const parsePdftomdProgressLine = (line) => {
   }
 };
 
+const OCR_PROFILES = new Set(["none", "korean-public-document", "receipt", "contract", "book-scan", "table-heavy"]);
+
+const normalizeOcrProfile = (value) => {
+  const profile = typeof value === "string" ? value.trim() : "";
+  return OCR_PROFILES.has(profile) ? profile : "none";
+};
+
 const mapPdfToMarkdownArgs = (fields, inputPath, outputPath) => {
   const mode = typeof fields.mode === "string" ? fields.mode : "balanced";
   const requestedEngine = typeof fields.ocrEngine === "string" ? fields.ocrEngine : "none";
   const ocrEngine = requestedEngine === "tesseract" || requestedEngine === "rapidocr" ? requestedEngine : "none";
   const splitEvery = Number.parseInt(String(fields.splitEvery || ""), 10);
-  const args = [PDFTOMD_SCRIPT_PATH, inputPath, "-o", outputPath, "--force", "--progress-format", "jsonl"];
+  const ocrProfile = normalizeOcrProfile(fields.ocrProfile);
+  const args = [PDFTOMD_SCRIPT_PATH, inputPath, "-o", outputPath, "--force", "--progress-format", "jsonl", "--ocr-profile", ocrProfile];
 
   if (ocrEngine !== "none" && mode === "balanced") {
     args.push("--ocr", "auto", "--ocr-engine", ocrEngine);
@@ -520,7 +534,7 @@ const mapPdfToMarkdownArgs = (fields, inputPath, outputPath) => {
     args.push("--split-every", String(splitEvery));
   }
 
-  return { args, mode, ocrEngine, splitEvery: Number.isFinite(splitEvery) && splitEvery > 0 ? splitEvery : undefined };
+  return { args, mode, ocrEngine, ocrProfile, splitEvery: Number.isFinite(splitEvery) && splitEvery > 0 ? splitEvery : undefined };
 };
 
 const collectMarkdownOutputs = async (jobDir, outputBasePath) => {
@@ -576,6 +590,22 @@ const enrichMarkdownDiagnostics = (diagnostics) => {
     const weakAfter = /weak_pages_after_pdfplumber=(\d+)/.exec(warning);
     if (weakBefore) diagnostics.weakPagesBeforeLayout = Number(weakBefore[1]);
     if (weakAfter) diagnostics.weakPagesAfterLayout = Number(weakAfter[1]);
+    const tesseractCandidate = /mode=tesseract_candidate .*language=([^\s]+) psm=([^\s]+) mean_confidence=([0-9.]+) low_confidence_lines=(\d+) score=([0-9.]+)/.exec(warning);
+    if (tesseractCandidate) {
+      diagnostics.ocrPipeline = "v2";
+      diagnostics.language = tesseractCandidate[1];
+      diagnostics.meanConfidence = Number(tesseractCandidate[3]);
+      diagnostics.lowConfidenceLineCount = Number(tesseractCandidate[4]);
+      diagnostics.candidateSummary = diagnostics.candidateSummary || [];
+      diagnostics.candidateSummary.push({
+        engine: "tesseract",
+        language: tesseractCandidate[1],
+        psm: tesseractCandidate[2],
+        meanConfidence: Number(tesseractCandidate[3]),
+        lowConfidenceLines: Number(tesseractCandidate[4]),
+        score: Number(tesseractCandidate[5]),
+      });
+    }
   }
   if (!diagnostics.engine && diagnostics.ocrEngine && diagnostics.ocrEngine !== "none") diagnostics.engine = diagnostics.ocrEngine;
 };
@@ -592,9 +622,10 @@ const runPdfToMarkdownJob = async (job, fields, file) => {
     progressEvents: [],
   };
   await fsp.mkdir(pdftomdCwd, { recursive: true });
-  const { args, mode, ocrEngine, splitEvery } = mapPdfToMarkdownArgs(fields, file.path, outputBasePath);
+  const { args, mode, ocrEngine, ocrProfile, splitEvery } = mapPdfToMarkdownArgs(fields, file.path, outputBasePath);
   diagnostics.mode = mode;
   diagnostics.ocrEngine = ocrEngine;
+  diagnostics.ocrProfile = ocrProfile;
   diagnostics.splitEvery = splitEvery;
 
   job.progress = { percent: 1, stage: "queued", message: "Starting pdftomd" };

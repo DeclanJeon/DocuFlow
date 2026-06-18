@@ -20,6 +20,7 @@ import {
   type PdfMarkdownDiagnostics,
   type PdfMarkdownJobProgress,
   type PdfMarkdownOutput,
+  type PdfMarkdownOcrProfile,
 } from "../../services/api/markdownApi";
 import { ProgressStep } from "../components/ProgressSteps";
 import JSZip from "jszip";
@@ -408,6 +409,7 @@ export const PdfToMdTool = () => {
   const [conversionMode, setConversionMode] = useState<"local" | "server">("server");
   const [serverQuality, setServerQuality] = useState<"fast" | "balanced" | "accurate">("balanced");
   const [serverOcr, setServerOcr] = useState<"none" | "rapidocr" | "tesseract">("tesseract");
+  const [serverOcrProfile, setServerOcrProfile] = useState<PdfMarkdownOcrProfile>("none");
   const [serverOutput, setServerOutput] = useState<PdfMarkdownOutput>("single");
   const [splitEvery, setSplitEvery] = useState("");
   const [jobDiagnostics, setJobDiagnostics] = useState<string[]>([]);
@@ -540,6 +542,7 @@ export const PdfToMdTool = () => {
         ocrEngine: serverOcr,
         output: serverOutput,
         splitEvery: splitValue,
+        ocrProfile: serverOcrProfile,
       });
 
       addDiagnostic(`${file.name}: job ${created.jobId} ${created.status}`);
@@ -737,6 +740,22 @@ export const PdfToMdTool = () => {
                     </select>
                   </label>
                   <label className="text-sm font-medium text-gray-700">
+                    OCR profile
+                    <select
+                      value={serverOcrProfile}
+                      onChange={(event) => setServerOcrProfile(event.target.value as PdfMarkdownOcrProfile)}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2"
+                      disabled={processing}
+                    >
+                      <option value="none">General document</option>
+                      <option value="korean-public-document">Korean public document</option>
+                      <option value="receipt">Receipt</option>
+                      <option value="contract">Contract</option>
+                      <option value="book-scan">Book scan</option>
+                      <option value="table-heavy">Table-heavy document</option>
+                    </select>
+                  </label>
+                  <label className="text-sm font-medium text-gray-700">
                     Output
                     <select
                       value={serverOutput}
@@ -874,6 +893,9 @@ export const PdfToMdTool = () => {
                   <p>Pages: {activeDiagnostics.pageCount ?? "unknown"}</p>
                   <p>Weak pages: {activeDiagnostics.weakPages?.join(", ") || "none"}</p>
                   <p>OCR pages: {activeDiagnostics.ocrPages?.join(", ") || "none"}</p>
+                  <p>Profile: {activeDiagnostics.ocrProfile || "none"}</p>
+                  <p>Confidence: {typeof activeDiagnostics.meanConfidence === "number" ? `${activeDiagnostics.meanConfidence.toFixed(1)}%` : "unknown"}</p>
+                  <p>Low-confidence lines: {activeDiagnostics.lowConfidenceLineCount ?? "unknown"}</p>
                 </div>
                 {activeDiagnostics.warnings?.length ? (
                   <ul className="mt-2 list-disc list-inside text-amber-700">

@@ -1,13 +1,24 @@
 export type PdfMarkdownMode = "fast" | "balanced" | "accurate";
 export type PdfMarkdownOcrEngine = "none" | "rapidocr" | "tesseract";
 export type PdfMarkdownOutput = "single" | "zip";
+export type PdfMarkdownOcrProfile = "none" | "korean-public-document" | "receipt" | "contract" | "book-scan" | "table-heavy";
 export type PdfMarkdownJobStatus = "queued" | "processing" | "completed" | "failed" | "cancelled" | "expired";
 
 export interface PdfMarkdownSubmitOptions {
   mode: PdfMarkdownMode;
   ocrEngine: PdfMarkdownOcrEngine;
+  ocrProfile?: PdfMarkdownOcrProfile;
   splitEvery?: number;
   output: PdfMarkdownOutput;
+}
+
+export interface PdfMarkdownCandidateSummary {
+  engine?: string;
+  language?: string;
+  psm?: string;
+  meanConfidence?: number;
+  lowConfidenceLines?: number;
+  score?: number;
 }
 
 export interface PdfMarkdownDiagnostics {
@@ -17,6 +28,12 @@ export interface PdfMarkdownDiagnostics {
   warnings?: string[];
   source?: string;
   outputFiles?: string[];
+  ocrPipeline?: string;
+  ocrProfile?: string;
+  language?: string;
+  meanConfidence?: number;
+  lowConfidenceLineCount?: number;
+  candidateSummary?: PdfMarkdownCandidateSummary[];
 }
 
 export interface PdfMarkdownJobCreated {
@@ -79,6 +96,19 @@ const readNumberArray = (record: Record<string, unknown>, key: string) => {
     : undefined;
 };
 
+const readCandidateSummary = (record: Record<string, unknown>) => {
+  const value = record.candidateSummary;
+  if (!Array.isArray(value)) return undefined;
+  return value.filter(isRecord).map((item) => ({
+    engine: readString(item, "engine"),
+    language: readString(item, "language"),
+    psm: readString(item, "psm"),
+    meanConfidence: readNumber(item, "meanConfidence"),
+    lowConfidenceLines: readNumber(item, "lowConfidenceLines"),
+    score: readNumber(item, "score"),
+  }));
+};
+
 const normalizeStatus = (value: unknown): PdfMarkdownJobStatus => {
   if (
     value === "queued" ||
@@ -102,6 +132,12 @@ const parseDiagnostics = (value: unknown): PdfMarkdownDiagnostics | undefined =>
     warnings: readStringArray(value, "warnings"),
     source: readString(value, "source"),
     outputFiles: readStringArray(value, "outputFiles"),
+    ocrPipeline: readString(value, "ocrPipeline"),
+    ocrProfile: readString(value, "ocrProfile"),
+    language: readString(value, "language"),
+    meanConfidence: readNumber(value, "meanConfidence"),
+    lowConfidenceLineCount: readNumber(value, "lowConfidenceLineCount"),
+    candidateSummary: readCandidateSummary(value),
   };
 };
 
@@ -208,6 +244,9 @@ export const submitPdfToMarkdownJob = async (
   formData.append("output", options.output);
   if (typeof options.splitEvery === "number" && options.splitEvery > 0) {
     formData.append("splitEvery", String(Math.floor(options.splitEvery)));
+  }
+  if (options.ocrProfile) {
+    formData.append("ocrProfile", options.ocrProfile);
   }
 
   const response = await fetch("/api/convert/pdf-to-markdown", {

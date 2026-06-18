@@ -58,6 +58,10 @@ rsync -avz \
 rsync -avz \
   ../pdf-master/tools/rhwp-ingest-exporter/target/release/rhwp-ingest-exporter \
   "${REMOTE}:${REMOTE_DIR}/tools/"
+rsync -avz \
+  ../pdf-master/server/hwpx2html.py \
+  "${REMOTE}:${REMOTE_DIR}/tools/"
+
 
 rsync -avz \
   package.json \
@@ -70,6 +74,7 @@ rsync -avz \
 # Step 6: Install dependencies on remote
 echo "[6/8] Installing dependencies on remote..."
 ssh "${REMOTE}" "cd ${REMOTE_DIR} && npm install --production 2>/dev/null || npm install"
+ssh "${REMOTE}" "cd ${REMOTE_DIR} && PLAYWRIGHT_BROWSERS_PATH=${REMOTE_DIR}/ms-playwright npx playwright install chromium >/dev/null && sudo chown -R www-data:www-data ${REMOTE_DIR}/ms-playwright && echo '  playwright chromium ready'"
 
 # Runtime job files are written by the systemd service user.
 ssh "${REMOTE}" "chmod 755 ${REMOTE_DIR}/tools/rhwp-ingest-exporter && sudo chown -R www-data:www-data ${REMOTE_DIR}/server-runtime"
@@ -93,7 +98,11 @@ Environment=PORT=4177
 Environment=PDFTOMD_PATH=/opt/docuflow/pdftomd/pdf_to_md.py
 Environment=OCRMYPDF_PATH=/usr/bin/ocrmypdf
 Environment=RHWP_INGEST_EXPORTER_PATH=/opt/docuflow/tools/rhwp-ingest-exporter
-Environment=PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium-browser
+Environment=HWPX2HTML_PATH=/opt/docuflow/tools/hwpx2html.py
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/docuflow/ms-playwright
+Environment=HOME=/opt/docuflow/server-runtime
+Environment=XDG_CONFIG_HOME=/opt/docuflow/server-runtime/.config
+Environment=XDG_CACHE_HOME=/opt/docuflow/server-runtime/.cache
 [Install]
 WantedBy=multi-user.target
 EOF

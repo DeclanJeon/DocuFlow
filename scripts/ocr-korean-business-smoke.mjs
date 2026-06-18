@@ -33,6 +33,7 @@ form.append("file", file);
 form.append("mode", "accurate");
 form.append("ocrEngine", "tesseract");
 form.append("output", "single");
+form.append("ocrProfile", "korean-public-document");
 
 const submitResponse = await fetch(`${baseUrl}/api/convert/pdf-to-markdown`, {
   method: "POST",
@@ -57,6 +58,15 @@ for (let i = 0; i < pollLimit && !["completed", "failed"].includes(job.status); 
 console.log(JSON.stringify({ status: job.status, resultFilename: job.resultFilename, diagnostics: job.diagnostics }, null, 2));
 if (job.status !== "completed") {
   throw new Error(JSON.stringify(job));
+}
+if (job.diagnostics?.ocrProfile !== "korean-public-document") {
+  throw new Error(`Expected korean-public-document profile diagnostics, got ${job.diagnostics?.ocrProfile}`);
+}
+if (typeof job.diagnostics?.meanConfidence !== "number") {
+  throw new Error("Expected numeric OCR confidence diagnostics.");
+}
+if (!Array.isArray(job.diagnostics?.candidateSummary) || job.diagnostics.candidateSummary.length === 0) {
+  throw new Error("Expected Tesseract candidate diagnostics.");
 }
 
 const downloadResponse = await fetch(
