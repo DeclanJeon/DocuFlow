@@ -25,7 +25,7 @@ ssh "${REMOTE}" "sudo mkdir -p ${REMOTE_DIR}/{dist,server-runtime,jobs,scripts,p
 
 # Step 3: Install system dependencies
 echo "[3/8] Installing system dependencies on remote..."
-ssh "${REMOTE}" "sudo env DEBIAN_FRONTEND=noninteractive apt-get update -qq && sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq poppler-utils qpdf ghostscript libreoffice chromium >/dev/null && echo '  system dependencies installed'"
+ssh "${REMOTE}" "sudo env DEBIAN_FRONTEND=noninteractive apt-get update -qq && sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq poppler-utils qpdf ghostscript libreoffice chromium fonts-noto-cjk tesseract-ocr tesseract-ocr-kor tesseract-ocr-eng >/dev/null && echo '  system dependencies installed'"
 
 # Step 4: Setup pdftomd Python environment
 echo "[4/8] Setting up pdftomd Python environment..."
@@ -49,7 +49,7 @@ rsync -avz \
   server/ \
   "${REMOTE}:${REMOTE_DIR}/server/"
 
-ssh "${REMOTE}" "mkdir -p ${REMOTE_DIR}/server-runtime/jobs ${REMOTE_DIR}/server-runtime/fixtures"
+ssh "${REMOTE}" "mkdir -p ${REMOTE_DIR}/server-runtime/jobs ${REMOTE_DIR}/server-runtime/fixtures && chmod 755 ${REMOTE_DIR}/server-runtime"
 
 rsync -avz \
   ../pdftomd/cli/ \
@@ -66,6 +66,9 @@ rsync -avz \
 # Step 6: Install dependencies on remote
 echo "[6/8] Installing dependencies on remote..."
 ssh "${REMOTE}" "cd ${REMOTE_DIR} && npm install --production 2>/dev/null || npm install"
+
+# Runtime job files are written by the systemd service user.
+ssh "${REMOTE}" "chmod 755 ${REMOTE_DIR}/tools/rhwp-ingest-exporter && sudo chown -R www-data:www-data ${REMOTE_DIR}/server-runtime"
 
 # Step 7: Setup systemd service
 echo "[7/8] Setting up systemd service..."

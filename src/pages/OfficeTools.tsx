@@ -407,7 +407,7 @@ export const PdfToMdTool = () => {
   const [activeResultIndex, setActiveResultIndex] = useState(0);
   const [conversionMode, setConversionMode] = useState<"local" | "server">("server");
   const [serverQuality, setServerQuality] = useState<"fast" | "balanced" | "accurate">("balanced");
-  const [serverOcr, setServerOcr] = useState<"none" | "rapidocr" | "tesseract">("rapidocr");
+  const [serverOcr, setServerOcr] = useState<"none" | "rapidocr" | "tesseract">("tesseract");
   const [serverOutput, setServerOutput] = useState<PdfMarkdownOutput>("single");
   const [splitEvery, setSplitEvery] = useState("");
   const [jobDiagnostics, setJobDiagnostics] = useState<string[]>([]);
@@ -731,9 +731,9 @@ export const PdfToMdTool = () => {
                       className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2"
                       disabled={processing}
                     >
+                      <option value="tesseract">Tesseract Korean/English on server (recommended)</option>
+                      <option value="rapidocr">RapidOCR on server (English/numeric)</option>
                       <option value="none">None</option>
-                      <option value="rapidocr">RapidOCR on server</option>
-                      <option value="tesseract">Tesseract on server</option>
                     </select>
                   </label>
                   <label className="text-sm font-medium text-gray-700">
