@@ -54,6 +54,43 @@ const safeName = (name, fallback = "document.pdf") => {
   return base || fallback;
 };
 
+const decodeHeaderUtf8Value = (value) => {
+  const text = String(value || "");
+  const decoded = Buffer.from(text, "latin1").toString("utf8");
+  return decoded.includes("\uFFFD") ? text : decoded;
+};
+
+const decodeExtendedDispositionValue = (value) => {
+  const match = /^([^']*)'[^']*'(.*)$/u.exec(String(value || ""));
+  if (!match) return undefined;
+  const charset = match[1].toLowerCase();
+  const bytes = [];
+  for (let i = 0; i < match[2].length; i += 1) {
+    if (match[2][i] === "%" && /^[0-9a-f]{2}$/i.test(match[2].slice(i + 1, i + 3))) {
+      bytes.push(Number.parseInt(match[2].slice(i + 1, i + 3), 16));
+      i += 2;
+    } else {
+      bytes.push(match[2].charCodeAt(i));
+    }
+  }
+  if (charset === "utf-8" || charset === "") return Buffer.from(bytes).toString("utf8");
+  if (charset === "iso-8859-1" || charset === "latin1") return Buffer.from(bytes).toString("latin1");
+  return undefined;
+};
+
+const dispositionFilename = (disposition, fallback = "document.pdf") => {
+  const extended = disposition["filename*"] ? decodeExtendedDispositionValue(disposition["filename*"]) : undefined;
+  return safeName(extended || decodeHeaderUtf8Value(disposition.filename || fallback), fallback);
+};
+
+const quoteDispositionValue = (value) => String(value).replace(/["\\]/g, "\\$&");
+
+const attachmentDisposition = (filename) => {
+  const safe = safeName(filename);
+  const asciiFallback = safe.replace(/[^\x20-\x7E]/g, "_").replace(/[\\"]/g, "_") || "document.pdf";
+  return `attachment; filename="${quoteDispositionValue(asciiFallback)}"; filename*=UTF-8''${encodeURIComponent(safe)}`;
+};
+
 const appendSuffix = (filename, suffix) => {
   const safe = safeName(filename);
   return /\.pdf$/i.test(safe) ? safe.replace(/\.pdf$/i, `${suffix}.pdf`) : `${safe}${suffix}.pdf`;
@@ -260,10 +297,16 @@ const cleanupStartupOrphans = async () => {
 
 const parseContentDisposition = (header) => {
   const fields = {};
-  for (const part of header.split(";")) {
-    const [rawKey, ...rawValue] = part.trim().split("=");
-    if (!rawValue.length) continue;
-    fields[rawKey.toLowerCase()] = rawValue.join("=").trim().replace(/^"|"$/g, "");
+  const parts = String(header || "").match(/(?:[^";]+|"(?:\\.|[^"])*")+/g) || [];
+  for (const part of parts) {
+    const separator = part.indexOf("=");
+    if (separator === -1) continue;
+    const key = part.slice(0, separator).trim().toLowerCase();
+    let value = part.slice(separator + 1).trim();
+    if (value.startsWith("\"") && value.endsWith("\"")) {
+      value = value.slice(1, -1).replace(/\\(["\\])/g, "$1");
+    }
+    fields[key] = value;
   }
   return fields;
 };
@@ -324,7 +367,7 @@ const parseMultipart = async (req, { limitBytes, jobDir }) => {
         error.code = "LIMIT_FILE_SIZE";
         throw error;
       }
-      const originalName = safeName(disposition.filename);
+      const originalName = dispositionFilename(disposition);
       const extension = /\.(hwp|hwpx|pdf)$/i.exec(originalName)?.[1]?.toLowerCase() || "pdf";
       const tempPath = path.join(jobDir, "upload.tmp");
       const inputPath = path.join(jobDir, `input.${extension}`);
@@ -1206,7 +1249,7 @@ app.get("/api/download/:jobId", async (req, res) => {
   res.setHeader("Content-Type", contentType);
   res.setHeader("Content-Length", String(stat.size));
   res.setHeader("Cache-Control", "no-store");
-  res.setHeader("Content-Disposition", `attachment; filename="${safeName(job.resultFilename)}"`);
+  res.setHeader("Content-Disposition", attachmentDisposition(job.resultFilename));
   await pipeline(fs.createReadStream(job.outputPath), res);
 });
 
