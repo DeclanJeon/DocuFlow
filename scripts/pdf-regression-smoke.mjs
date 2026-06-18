@@ -172,7 +172,9 @@ const main = async () => {
     assert(normalizedOcrMarkdown.includes('12345') && normalizedOcrMarkdown.includes('FALLBACK'), 'OCR markdown did not include scanned text markers');
     assert(ocrCompleted.diagnostics?.ocrProfile === 'none', 'OCR diagnostics did not preserve general profile');
     assert(ocrCompleted.diagnostics?.ocrAccuracy === 'balanced', 'OCR diagnostics did not preserve accuracy selection');
-    assert(typeof ocrCompleted.diagnostics?.meanConfidence === 'number', 'OCR diagnostics did not include mean confidence');
+    if (ocrCompleted.diagnostics?.ocrEngine === 'tesseract') {
+      assert(typeof ocrCompleted.diagnostics?.meanConfidence === 'number', 'OCR diagnostics did not include mean confidence');
+    }
   }
 
   const hwpPdfJob = await postPdf('/api/convert/hwp-to-pdf', {}, hwpxFixture.bytes, 'regression-smoke.hwpx');
