@@ -25,7 +25,7 @@ ssh "${REMOTE}" "sudo mkdir -p ${REMOTE_DIR}/{dist,server-runtime,jobs,scripts,p
 
 # Step 3: Install system dependencies
 echo "[3/8] Installing system dependencies on remote..."
-ssh "${REMOTE}" "sudo env DEBIAN_FRONTEND=noninteractive apt-get update -qq && sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq poppler-utils qpdf ghostscript libreoffice chromium fonts-noto-cjk tesseract-ocr tesseract-ocr-kor tesseract-ocr-eng >/dev/null && echo '  system dependencies installed'"
+ssh "${REMOTE}" "sudo env DEBIAN_FRONTEND=noninteractive apt-get update -qq && sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq poppler-utils qpdf ghostscript libreoffice chromium fonts-noto-cjk tesseract-ocr tesseract-ocr-kor tesseract-ocr-eng ocrmypdf >/dev/null && echo '  system dependencies installed'"
 
 # Step 4: Setup pdftomd Python environment
 echo "[4/8] Setting up pdftomd Python environment..."
@@ -87,6 +87,7 @@ RestartSec=5
 Environment=NODE_ENV=production
 Environment=PORT=4177
 Environment=PDFTOMD_PATH=/opt/docuflow/pdftomd/pdf_to_md.py
+Environment=OCRMYPDF_PATH=/usr/bin/ocrmypdf
 Environment=RHWP_INGEST_EXPORTER_PATH=/opt/docuflow/tools/rhwp-ingest-exporter
 Environment=PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium-browser
 [Install]

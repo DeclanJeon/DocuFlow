@@ -78,6 +78,36 @@ export const compressPdfOnServer = async (
   return submitPdfJob("/api/pdf/compress", formData, "Server PDF compression failed.");
 };
 
+export const createSearchablePdfOnServer = async (file: File, language = "kor+eng") => {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("language", language);
+  return submitPdfJob("/api/ocr/searchable-pdf", formData, "Server searchable PDF OCR failed.");
+};
+
+export const pollCompletedPdfJob = async (
+  jobId: string,
+  downloadToken: string,
+  onProgress?: (job: CompletedPdfJob) => void,
+  intervalMs = 1000
+) => {
+  for (;;) {
+    const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}?token=${encodeURIComponent(downloadToken)}`, {
+      headers: { "X-Download-Token": downloadToken },
+    });
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, "Could not read PDF job status."));
+    }
+    const job = parseCompletedJob({ ...(await response.json()), downloadToken });
+    onProgress?.(job);
+    if (job.status === "completed") return job;
+    if (job.status === "failed" || job.status === "expired" || job.status === "cancelled") {
+      throw new Error("PDF job failed before completion.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+};
+
 export const downloadCompletedPdfJob = async (job: CompletedPdfJob) => {
   const url = job.downloadUrl || `/api/download/${encodeURIComponent(job.jobId)}`;
   const separator = url.includes("?") ? "&" : "?";

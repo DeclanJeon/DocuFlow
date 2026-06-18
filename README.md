@@ -25,7 +25,7 @@
 - PDF 편집: `Merge`, `Split`, `Organize`, `Compress`, `Page Numbers`, `Annotate`
 - PDF 보안: `Protect PDF`, `Unlock PDF`, `Watermark`, `Sign & Stamp`
 - 포맷 변환: `PDF ↔ DOCX`, `PDF → Markdown`, `EPUB → PDF`, `JPG ↔ PDF`
-- OCR: 이미지/PDF 기반 텍스트 추출 (내부 서버 Tesseract OCR, API 키 불필요)
+- OCR: 이미지/PDF 기반 텍스트 추출 및 원본 레이아웃 보존 Searchable PDF 생성 (내부 Tesseract/OCRmyPDF, API 키 불필요)
 - 진행 상태 UI: 긴 작업에서 단계별 진행률/상태 안내
 
 ## 기술 스택

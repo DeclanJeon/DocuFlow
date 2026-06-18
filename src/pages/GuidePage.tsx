@@ -304,13 +304,13 @@ const guideItems: GuideSectionProps[] = [
   },
   {
     icon: Search, iconColor: "bg-violet-600",
-    title: "OCR 텍스트 추출",
-    description: "PDF 또는 이미지에서 텍스트를 추출합니다.",
+    title: "OCR / Searchable PDF",
+    description: "PDF 또는 이미지에서 텍스트를 추출하거나 원본 레이아웃을 보존한 검색 가능한 PDF를 만듭니다.",
     steps: [
       "PDF 또는 이미지 파일을 업로드하세요.",
-      "DocuFlow 내부 Tesseract OCR이 서버에서 텍스트를 추출합니다.",
-      "'추출' 버튼을 클릭하면 텍스트가 추출됩니다.",
-      "추출된 텍스트를 복사하거나 다운로드하세요.",
+      "Text / Markdown 또는 Searchable PDF 출력 모드를 선택하세요.",
+      "Text / Markdown은 내부 Tesseract OCR로 텍스트를 추출합니다.",
+      "Searchable PDF는 OCRmyPDF로 원본 페이지 모양을 유지하고 보이지 않는 텍스트 레이어를 추가합니다.",
     ],
     route: "/ocr", processing: "server",
   },

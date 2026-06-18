@@ -27,9 +27,11 @@ import {
   submitPdfToMarkdownJob,
 } from "../../services/api/markdownApi";
 import {
+  createSearchablePdfOnServer,
   compressPdfOnServer,
   downloadBlob,
   downloadCompletedPdfJob,
+  pollCompletedPdfJob,
 } from "../../services/api/pdfJobApi";
 import { Annotation } from "../../types";
 import {
@@ -1014,11 +1016,13 @@ const imageFileToSinglePagePdf = async (file: File) => {
 export const OcrTool = () => {
   const [file, setFile] = useState<File | null>(null);
   const [resultText, setResultText] = useState("");
+  const [outputMode, setOutputMode] = useState<"text" | "searchable-pdf">("text");
+  const [resultNotice, setResultNotice] = useState("");
   const [processing, setProcessing] = useState(false);
   
   const [ocrSteps, setOcrSteps] = useState<ProgressStep[]>([
     { id: "prep", label: "Preparing document", status: "pending" },
-    { id: "server", label: "Internal OCR (Tesseract)", status: "pending" },
+    { id: "server", label: "Internal OCR", status: "pending" },
     { id: "done", label: "Finalizing", status: "pending" },
   ]);
 
@@ -1030,9 +1034,11 @@ export const OcrTool = () => {
     if (!file) return;
     setProcessing(true);
     
+    setResultText("");
+    setResultNotice("");
     setOcrSteps([
       { id: "prep", label: "Preparing document", status: "processing" },
-      { id: "server", label: "Internal OCR (Tesseract)", status: "pending" },
+      { id: "server", label: outputMode === "searchable-pdf" ? "Preserving layout with OCRmyPDF" : "Extracting text with Tesseract", status: "pending" },
       { id: "done", label: "Finalizing", status: "pending" },
     ]);
 
@@ -1045,27 +1051,45 @@ export const OcrTool = () => {
       updateStep("prep", "completed");
       updateStep("server", "processing");
 
-      const job = await submitPdfToMarkdownJob(fileToSend, {
-        mode: "accurate",
-        ocrEngine: "tesseract",
-        output: "single",
-      });
-      const completed = await pollPdfToMarkdownJob(job.jobId, job.downloadToken, () => undefined, 1000);
-      if (completed.status !== "completed") {
-        throw new Error(completed.error || completed.message || "Internal OCR job failed.");
+      if (outputMode === "searchable-pdf") {
+        const job = await createSearchablePdfOnServer(fileToSend, "kor+eng");
+        const completed = await pollCompletedPdfJob(job.jobId, job.downloadToken, () => undefined, 1000);
+        const resultBlob = await downloadCompletedPdfJob({
+          ...completed,
+          downloadToken: job.downloadToken,
+          downloadUrl: completed.downloadUrl || job.downloadUrl,
+        });
+        const filename =
+          completed.resultFilename ||
+          fileToSend.name.replace(/\.pdf$/i, "_searchable.pdf");
+        downloadBlob(resultBlob, filename);
+        updateStep("server", "completed");
+        updateStep("done", "processing");
+        setResultNotice("Searchable PDF created and downloaded. The original page layout is preserved with an invisible OCR text layer.");
+        updateStep("done", "completed");
+      } else {
+        const job = await submitPdfToMarkdownJob(fileToSend, {
+          mode: "accurate",
+          ocrEngine: "tesseract",
+          output: "single",
+        });
+        const completed = await pollPdfToMarkdownJob(job.jobId, job.downloadToken, () => undefined, 1000);
+        if (completed.status !== "completed") {
+          throw new Error(completed.error || completed.message || "Internal OCR job failed.");
+        }
+        const resultBlob = await downloadPdfToMarkdownResult(
+          job.jobId,
+          job.downloadToken,
+          completed.downloadUrl
+        );
+        const text = await resultBlob.text();
+
+        updateStep("server", "completed");
+        updateStep("done", "processing");
+
+        setResultText(text);
+        updateStep("done", "completed");
       }
-      const resultBlob = await downloadPdfToMarkdownResult(
-        job.jobId,
-        job.downloadToken,
-        completed.downloadUrl
-      );
-      const text = await resultBlob.text();
-
-      updateStep("server", "completed");
-      updateStep("done", "processing");
-
-      setResultText(text);
-      updateStep("done", "completed");
     } catch (e) {
       console.error(e);
       updateStep("server", "error");
@@ -1076,11 +1100,11 @@ export const OcrTool = () => {
   };
 
   return (
-    <ToolLayout 
+    <ToolLayout
       title="Internal OCR Text Extractor"
       icon={getToolByRoute("/ocr")?.icon}
       iconColorClass={getToolByRoute("/ocr")?.colorClass}
-      description="Extract text with DocuFlow's internal Tesseract OCR."
+      description="Extract text with DocuFlow's internal Tesseract OCR or preserve the original layout as a searchable PDF."
       isProcessing={processing}
       progressSteps={ocrSteps}
       progressLabel="Internal OCR Processing"
@@ -1104,6 +1128,7 @@ export const OcrTool = () => {
                 onClick={() => {
                   setFile(null);
                   setResultText("");
+                  setResultNotice("");
                 }}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -1111,21 +1136,61 @@ export const OcrTool = () => {
               </button>
             </div>
 
-            {!resultText && (
+            <div className="mb-4 grid gap-3 md:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setOutputMode("text")}
+                disabled={processing}
+                className={`rounded-xl border p-4 text-left transition-colors ${
+                  outputMode === "text"
+                    ? "border-violet-300 bg-violet-50 text-violet-900"
+                    : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                }`}
+              >
+                <p className="text-sm font-bold">Text / Markdown</p>
+                <p className="mt-1 text-xs">Extract recognized text for copy/paste or Markdown workflows.</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setOutputMode("searchable-pdf")}
+                disabled={processing}
+                className={`rounded-xl border p-4 text-left transition-colors ${
+                  outputMode === "searchable-pdf"
+                    ? "border-violet-300 bg-violet-50 text-violet-900"
+                    : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                }`}
+              >
+                <p className="text-sm font-bold">Searchable PDF</p>
+                <p className="mt-1 text-xs">Keep the original page layout and add an invisible OCR text layer.</p>
+              </button>
+            </div>
+
+            {!resultText && !resultNotice && (
               <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50 p-8 text-center">
                 <p className="text-gray-500 mb-2">
-                  Ready to scan with DocuFlow's internal Tesseract OCR.
+                  {outputMode === "searchable-pdf"
+                    ? "Ready to preserve the original layout with OCRmyPDF."
+                    : "Ready to scan with DocuFlow's internal Tesseract OCR."}
                 </p>
                 <p className="text-xs text-gray-400 mb-6">
-                  PDF, PNG, and JPG files are processed through the same internal server OCR pipeline.
+                  {outputMode === "searchable-pdf"
+                    ? "Best for scanned PDFs when you need search/copy while keeping the page appearance."
+                    : "PDF, PNG, and JPG files are processed through the same internal server OCR pipeline."}
                 </p>
                 <button
                   type="button"
                   onClick={handleOcr}
                   className="px-10 py-4 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl shadow-lg shadow-violet-200 transition-all text-lg transform hover:-translate-y-0.5"
                 >
-                  Start Internal OCR
+                  {outputMode === "searchable-pdf" ? "Create Searchable PDF" : "Start Internal OCR"}
                 </button>
+              </div>
+            )}
+
+            {resultNotice && (
+              <div className="flex-1 flex flex-col items-center justify-center border border-emerald-200 rounded-2xl bg-emerald-50 p-8 text-center">
+                <CheckCircle2 className="mb-4 text-emerald-600" size={40} />
+                <p className="max-w-xl text-sm leading-relaxed text-emerald-800">{resultNotice}</p>
               </div>
             )}
 

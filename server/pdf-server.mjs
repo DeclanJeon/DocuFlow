@@ -13,6 +13,7 @@ const PORT = Number(process.env.PDF_SERVER_PORT || 4177);
 const JOB_ROOT = path.resolve(process.cwd(), "server-runtime", "jobs");
 const QPDF_PATH = process.env.QPDF_PATH || "qpdf";
 const GHOSTSCRIPT_PATH = process.env.GHOSTSCRIPT_PATH || process.env.GS_PATH || "gs";
+const OCRMYPDF_PATH = process.env.OCRMYPDF_PATH || "ocrmypdf";
 const LOCAL_PDFTOMD_PYTHON = path.resolve(process.cwd(), ".venv-pdftomd", "bin", "python");
 const PYTHON_PATH = process.env.PYTHON_PATH || (fs.existsSync(LOCAL_PDFTOMD_PYTHON) ? LOCAL_PDFTOMD_PYTHON : "python3");
 const PDFTOMD_SCRIPT_PATH = process.env.PDFTOMD_PATH || (fs.existsSync(path.resolve(process.cwd(), "../pdftomd/cli/pdf_to_md.py")) ? path.resolve(process.cwd(), "../pdftomd/cli/pdf_to_md.py") : path.resolve(process.cwd(), "pdftomd/pdf_to_md.py"));
@@ -61,10 +62,9 @@ const appendSuffix = (filename, suffix) => {
 const jsonError = (res, status, code, message, extra = {}) => {
   res.status(status).json({ ok: false, code, error: message, ...extra });
 };
-
-const commandAvailable = (command, args = ["--version"]) =>
+const commandAvailable = (command, args = ["--version"], timeout = 5000) =>
   new Promise((resolve) => {
-    execFile(command, args, { timeout: 5000 }, (error, stdout, stderr) => {
+    execFile(command, args, { timeout }, (error, stdout, stderr) => {
       resolve({
         available: !error,
         command,
@@ -602,6 +602,70 @@ const runPdfToMarkdownJob = async (job, fields, file) => {
   job.diagnostics = diagnostics;
   await finishJob(job, { outputPath, resultFilename });
 };
+const runSearchablePdfJob = async (job, fields, file) => {
+  const ocrmypdf = await commandAvailable(OCRMYPDF_PATH, ["--version"]);
+  if (!ocrmypdf.available) {
+    const error = new Error("ocrmypdf is not available.");
+    error.code = "DEPENDENCY_UNAVAILABLE";
+    throw Object.assign(error, { status: 503 });
+  }
+
+  const language = typeof fields.language === "string" && fields.language.trim()
+    ? fields.language.trim()
+    : "kor+eng";
+  const optimize = typeof fields.optimize === "string" ? fields.optimize : "1";
+  const outputPath = path.join(job.jobDir, "searchable.pdf");
+  const tempOutput = path.join(job.jobDir, "searchable.tmp.pdf");
+
+  job.progress = { percent: 5, stage: "ocr", message: "Creating searchable PDF with internal OCR." };
+  job.updatedAt = Date.now();
+
+  const args = [
+    "--language",
+    language,
+    "--deskew",
+    "--rotate-pages",
+    "--skip-text",
+    "--output-type",
+    "pdf",
+    "--optimize",
+    optimize,
+    "--jobs",
+    "2",
+    file.path,
+    tempOutput,
+  ];
+
+  try {
+    const result = await execFileChecked(OCRMYPDF_PATH, args, {
+      timeout: PROCESS_TIMEOUT_MS * 8,
+      maxBuffer: 16 * 1024 * 1024,
+      env: {
+        ...process.env,
+        HOME: job.jobDir,
+        LANG: process.env.LANG || "C.UTF-8",
+        LC_ALL: process.env.LC_ALL || "C.UTF-8",
+      },
+    });
+    await assertOutput(tempOutput);
+    await fsp.rename(tempOutput, outputPath);
+    await finishJob(job, {
+      outputPath,
+      resultFilename: appendSuffix(file.originalName, "_searchable"),
+      diagnostics: {
+        engine: "ocrmypdf",
+        language,
+        optimize,
+        stdout: String(result.stdout || "").slice(-4000),
+        stderr: String(result.stderr || "").slice(-4000),
+      },
+    });
+  } catch (error) {
+    await fsp.rm(tempOutput, { force: true }).catch(() => undefined);
+    throw error;
+  }
+};
+
 
 const renderHtmlFileToPdf = async (htmlPath, outputPath) => {
   const html = await fsp.readFile(htmlPath, "utf8");
@@ -634,6 +698,7 @@ app.get("/api/ready", async (_req, res) => {
   const [
     qpdf,
     ghostscript,
+    ocrmypdf,
     python,
     pdftohtml,
     pdftotext,
@@ -647,6 +712,7 @@ app.get("/api/ready", async (_req, res) => {
   ] = await Promise.all([
     commandAvailable(QPDF_PATH),
     commandAvailable(GHOSTSCRIPT_PATH),
+    commandAvailable(OCRMYPDF_PATH, ["--version"], 15000),
     commandAvailable(PYTHON_PATH),
     commandAvailable(PDFTOHTML_PATH, ["-v"]),
     commandAvailable(PDFTOTEXT_PATH, ["-v"]),
@@ -666,7 +732,7 @@ app.get("/api/ready", async (_req, res) => {
     detail: pdftomdScriptExists ? python.detail : `pdftomd script missing at ${PDFTOMD_SCRIPT_PATH}`,
   };
   const ocr = {
-    requiredFor: ["/api/convert/pdf-to-markdown"],
+    requiredFor: ["/api/convert/pdf-to-markdown", "/api/ocr/searchable-pdf"],
     tesseract,
     rapidocr,
     pdf2image,
@@ -675,6 +741,13 @@ app.get("/api/ready", async (_req, res) => {
       tesseract.available && pdf2image.available && pdftoppm.available ? "tesseract" : undefined,
       rapidocr.available && pdf2image.available && pdftoppm.available ? "rapidocr" : undefined,
     ].filter(Boolean),
+  };
+  const searchablePdf = {
+    requiredFor: ["/api/ocr/searchable-pdf"],
+    available: ocrmypdf.available && tesseract.available,
+    command: OCRMYPDF_PATH,
+    detail: ocrmypdf.available ? ocrmypdf.detail : "ocrmypdf is required to preserve the original PDF layout while adding a searchable OCR text layer.",
+    pipeline: { ocrmypdf, tesseract },
   };
   const hwpToPdf = {
     requiredFor: ["/api/convert/hwp-to-pdf"],
@@ -699,7 +772,7 @@ app.get("/api/ready", async (_req, res) => {
     },
   };
   const playwrightChromium = playwrightChromiumDependency();
-  const ok = qpdf.available && ghostscript.available && playwrightChromium.available && pdftomd.available && hwpToPdf.available;
+  const ok = qpdf.available && ghostscript.available && playwrightChromium.available && pdftomd.available && hwpToPdf.available && searchablePdf.available;
   res.status(ok ? 200 : 503).json({
     ok,
     service: "docuflow-pdf-server",
@@ -707,6 +780,7 @@ app.get("/api/ready", async (_req, res) => {
       qpdf: { requiredFor: ["/api/pdf/encrypt", "/api/pdf/decrypt"], ...qpdf },
       ghostscript: { requiredFor: ["/api/pdf/compress"], ...ghostscript },
       pdftomd: { ...pdftomd, baseDeps: pdftomdBaseDeps, ocr },
+      searchablePdf,
       playwrightChromium,
       hwpToPdf,
       pdfToHwp,
@@ -884,6 +958,39 @@ app.post("/api/convert/pdf-to-markdown", async (req, res) => {
         await failJob(job, "PDF_ENCRYPTED_UNSUPPORTED", "Encrypted PDF cannot be converted without a password.");
       } else if (/module|not found|no such file|dependency/i.test(stderr)) {
         await failJob(job, "DEPENDENCY_UNAVAILABLE", "pdftomd dependency is unavailable.");
+      } else {
+        await failJob(job, mapped.code, mapped.message);
+      }
+    });
+  } catch (error) {
+    if (await handleUploadError(res, job, error)) return;
+    const mapped = mapProcessError(error);
+    await failJob(job, mapped.code, mapped.message);
+    jsonError(res, mapped.status, mapped.code, mapped.message);
+  }
+});
+
+app.post("/api/ocr/searchable-pdf", async (req, res) => {
+  const job = await createJob("ocr-searchable-pdf", req);
+  try {
+    const upload = await parseMultipart(req, { limitBytes: MARKDOWN_UPLOAD_LIMIT, jobDir: job.jobDir });
+    if (!/\.pdf$/i.test(upload.file.originalName)) {
+      await failJob(job, "INVALID_FILE", "PDF file is required for searchable PDF OCR.");
+      jsonError(res, 400, "INVALID_FILE", "PDF file is required for searchable PDF OCR.");
+      return;
+    }
+    job.inputPath = upload.file.path;
+    job.originalName = upload.file.originalName;
+    job.progress = { percent: 1, stage: "queued", message: "Searchable PDF OCR job queued" };
+    job.updatedAt = Date.now();
+    res.json({ ok: true, ...publicJob(job, true), message: "Searchable PDF OCR job queued." });
+    void runSearchablePdfJob(job, upload.fields, upload.file).catch(async (error) => {
+      const mapped = mapProcessError(error);
+      const stderr = String(error?.stderr || "");
+      if (/EncryptedPdfError|password|encrypted/i.test(stderr)) {
+        await failJob(job, "PDF_ENCRYPTED_UNSUPPORTED", "Encrypted PDF cannot be OCR-processed without a password.");
+      } else if (/ocrmypdf|tesseract|not found|dependency/i.test(stderr)) {
+        await failJob(job, "DEPENDENCY_UNAVAILABLE", "Searchable PDF OCR dependency is unavailable.");
       } else {
         await failJob(job, mapped.code, mapped.message);
       }
