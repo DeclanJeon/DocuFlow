@@ -27,11 +27,9 @@ const GuideSection = ({ icon: Icon, iconColor, title, description, steps, route,
           <div className="flex items-center gap-2 mb-1">
             <h3 className="text-lg font-bold text-slate-900">{title}</h3>
             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-              processing === "browser" ? "bg-blue-100 text-blue-700" :
-              processing === "server" ? "bg-purple-100 text-purple-700" :
-              "bg-orange-100 text-orange-700"
+              processing === "browser" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
             }`}>
-              {processing === "browser" ? "브라우저 처리" : processing === "server" ? "서버 처리" : "외부 OCR"}
+              {processing === "browser" ? "브라우저 처리" : "서버 처리"}
             </span>
           </div>
           <p className="text-sm text-slate-600 mb-4">{description}</p>
@@ -310,11 +308,11 @@ const guideItems: GuideSectionProps[] = [
     description: "PDF 또는 이미지에서 텍스트를 추출합니다.",
     steps: [
       "PDF 또는 이미지 파일을 업로드하세요.",
-      "OCR 엔진을 선택하세요.",
+      "DocuFlow 내부 Tesseract OCR이 서버에서 텍스트를 추출합니다.",
       "'추출' 버튼을 클릭하면 텍스트가 추출됩니다.",
       "추출된 텍스트를 복사하거나 다운로드하세요.",
     ],
-    route: "/ocr", processing: "external",
+    route: "/ocr", processing: "server",
   },
 ];
 
@@ -412,7 +410,7 @@ export default function GuidePage() {
         {/* Processing Info */}
         <div className="mt-12 bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
           <h2 className="text-xl font-bold text-slate-900 mb-4">처리 방식 안내</h2>
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-2 gap-6">
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700">브라우저 처리</span>
@@ -429,15 +427,6 @@ export default function GuidePage() {
               <p className="text-sm text-slate-600">
                 파일이 DocuFlow 서버에서 처리됩니다.
                 처리 완료 후 파일은 자동으로 삭제됩니다.
-              </p>
-            </div>
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-700">외부 OCR</span>
-              </div>
-              <p className="text-sm text-slate-600">
-                외부 OCR 서비스를 사용할 수 있습니다.
-                사용 시 데이터가 외부로 전송될 수 있음을 안내합니다.
               </p>
             </div>
           </div>

@@ -130,7 +130,36 @@ server {
         client_max_body_size 200M;
     }
 
+    location = /index.html {
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+        try_files /index.html =404;
+    }
+
+    location = /sw.js {
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+        try_files /sw.js =404;
+    }
+
+    location = /registerSW.js {
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+        try_files /registerSW.js =404;
+    }
+
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files \$uri =404;
+    }
+
     location / {
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
         try_files \$uri \$uri/ /index.html;
     }
 
@@ -164,7 +193,36 @@ server {
         client_max_body_size 200M;
     }
 
+    location = /index.html {
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+        try_files /index.html =404;
+    }
+
+    location = /sw.js {
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+        try_files /sw.js =404;
+    }
+
+    location = /registerSW.js {
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+        try_files /registerSW.js =404;
+    }
+
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files \$uri =404;
+    }
+
     location / {
+        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
         try_files \$uri \$uri/ /index.html;
     }
 

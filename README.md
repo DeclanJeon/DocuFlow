@@ -25,7 +25,7 @@
 - PDF 편집: `Merge`, `Split`, `Organize`, `Compress`, `Page Numbers`, `Annotate`
 - PDF 보안: `Protect PDF`, `Unlock PDF`, `Watermark`, `Sign & Stamp`
 - 포맷 변환: `PDF ↔ DOCX`, `PDF → Markdown`, `EPUB → PDF`, `JPG ↔ PDF`
-- OCR: 이미지/PDF 기반 텍스트 추출 (로컬 OCR 파이프라인, 웹에서 OpenRouter 보완 경로 사용 가능)
+- OCR: 이미지/PDF 기반 텍스트 추출 (내부 서버 Tesseract OCR, API 키 불필요)
 - 진행 상태 UI: 긴 작업에서 단계별 진행률/상태 안내
 
 ## 기술 스택
@@ -33,7 +33,7 @@
 - Frontend: `React 19`, `TypeScript`, `Vite`, `React Router`
 - UI: `Tailwind CSS`, `lucide-react`
 - 문서 처리: `pdf-lib`, `pdfjs-dist`, `docx`, `mammoth`, `jszip`
-- OCR: 로컬 텍스트 추출 기본 동작 + 웹에서 OpenRouter 기반 OCR 보완 모드 사용 가능
+- OCR: 내부 서버 Tesseract OCR (`tesseract-ocr`, `tesseract-ocr-kor`, `tesseract-ocr-eng`, `fonts-noto-cjk`)
 - Headless PDF 렌더링 서버(선택): `Express`, `Playwright`
 - PWA: `vite-plugin-pwa`, `workbox-window`
 
@@ -66,16 +66,14 @@ pnpm install
 cp .env.example .env
 ```
 
-선택 변수:
+환경 변수는 기본 개발 실행에는 필요하지 않습니다.
 
 ```env
-# OpenRouter OCR (웹 보완 모드, 선택)
-VITE_OPENROUTER_API_KEY=your_api_key_here
-# 선택: 기본 OCR 모델
-VITE_OPENROUTER_MODEL=google/gemma-3-27b-it:free
+# DocuFlow OCR uses the internal server pipeline.
+# No OCR credentials are required.
 
-# 일부 기존 코드 경로 호환용
-GEMINI_API_KEY=your_gemini_api_key
+# Optional: override API proxy target in development if needed.
+# VITE_API_BASE_URL=http://127.0.0.1:4177
 ```
 
 ### 4) 개발 서버 실행
@@ -148,8 +146,9 @@ DocuFlow/
   services/
     pdfUtils.ts
     officeUtils.ts
-    openRouterService.ts
-    pdfOCRExtractor.ts
+    api/
+      markdownApi.ts
+      pdfJobApi.ts
   server/
     pdf-server.mjs
 ```
@@ -157,13 +156,13 @@ DocuFlow/
 ## 배포 가이드
 
 - 정적 프론트만 배포: `pnpm build` 후 `dist/` 배포
-- OCR 고정밀 웹 모드 사용 시: `VITE_OPENROUTER_API_KEY` 설정 필요
+- OCR 사용 시: `server/pdf-server.mjs`와 시스템 Tesseract 의존성 필요
 - Headless PDF 서버 사용 시: `server/pdf-server.mjs`를 별도 Node 런타임으로 배포
 
 ## 트러블슈팅
 
-- `OpenRouter API Key가 설정되지 않았습니다`
-  - `.env(.local)`에 `VITE_OPENROUTER_API_KEY` 확인 (웹 OCR 보완 모드 사용 시 필요)
+- OCR이 동작하지 않음
+  - `pnpm pdf-server` 실행 여부와 `tesseract-ocr-kor`, `tesseract-ocr-eng`, `fonts-noto-cjk` 설치 여부 확인
 - `Playwright browser is missing`
   - `pnpm exec playwright install chromium` 실행
 - `/api` 호출 실패

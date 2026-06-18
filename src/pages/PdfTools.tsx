@@ -1080,7 +1080,7 @@ export const OcrTool = () => {
       title="Internal OCR Text Extractor"
       icon={getToolByRoute("/ocr")?.icon}
       iconColorClass={getToolByRoute("/ocr")?.colorClass}
-      description="Extract text with DocuFlow's internal Tesseract OCR. No external API key is required."
+      description="Extract text with DocuFlow's internal Tesseract OCR."
       isProcessing={processing}
       progressSteps={ocrSteps}
       progressLabel="Internal OCR Processing"
@@ -1117,7 +1117,7 @@ export const OcrTool = () => {
                   Ready to scan with DocuFlow's internal Tesseract OCR.
                 </p>
                 <p className="text-xs text-gray-400 mb-6">
-                  PDF, PNG, and JPG files are processed through the same server OCR pipeline. No OpenRouter, Gemini, or API key is used.
+                  PDF, PNG, and JPG files are processed through the same internal server OCR pipeline.
                 </p>
                 <button
                   type="button"
