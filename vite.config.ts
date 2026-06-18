@@ -70,7 +70,12 @@ export default defineConfig(({ mode }) => {
             },
           ],
         },
+        injectRegister: "auto",
+        strategies: "generateSW",
         workbox: {
+          skipWaiting: true,
+          clientsClaim: true,
+          cleanupOutdatedCaches: true,
           globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
           runtimeCaching: [
             {

@@ -20,7 +20,12 @@ import { ToolLayout } from "../components/Layout";
 import { getToolByRoute } from "../data/tools";
 import { FileUpload } from "../components/Shared";
 import * as pdfUtils from "../../services/pdfUtils";
-import { performOCRWithOpenRouter } from "../../services/openRouterService";
+import { PDFDocument } from "pdf-lib";
+import {
+  downloadPdfToMarkdownResult,
+  pollPdfToMarkdownJob,
+  submitPdfToMarkdownJob,
+} from "../../services/api/markdownApi";
 import {
   compressPdfOnServer,
   downloadBlob,
@@ -987,14 +992,33 @@ export const AnnotateTool = () => {
 // --- OCR Tool ---
 import { ProgressStep } from "../components/ProgressSteps";
 
+const imageFileToSinglePagePdf = async (file: File) => {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const pdf = await PDFDocument.create();
+  const image =
+    file.type === "image/jpeg" || file.name.toLowerCase().match(/\.jpe?g$/)
+      ? await pdf.embedJpg(bytes)
+      : await pdf.embedPng(bytes);
+  const maxWidth = 900;
+  const maxHeight = 1200;
+  const scale = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
+  const width = image.width * scale;
+  const height = image.height * scale;
+  const page = pdf.addPage([width, height]);
+  page.drawImage(image, { x: 0, y: 0, width, height });
+  return new File([await pdf.save()], `${file.name.replace(/\.[^.]+$/, "")}.pdf`, {
+    type: "application/pdf",
+  });
+};
+
 export const OcrTool = () => {
   const [file, setFile] = useState<File | null>(null);
   const [resultText, setResultText] = useState("");
   const [processing, setProcessing] = useState(false);
   
   const [ocrSteps, setOcrSteps] = useState<ProgressStep[]>([
-    { id: "prep", label: "Preprocessing Image", status: "pending" },
-    { id: "ai", label: "Cloud OCR (Gemini)", status: "pending" },
+    { id: "prep", label: "Preparing document", status: "pending" },
+    { id: "server", label: "Internal OCR (Tesseract)", status: "pending" },
     { id: "done", label: "Finalizing", status: "pending" },
   ]);
 
@@ -1006,36 +1030,46 @@ export const OcrTool = () => {
     if (!file) return;
     setProcessing(true);
     
-    // Reset
     setOcrSteps([
-      { id: "prep", label: "Preprocessing Image", status: "processing" },
-      { id: "ai", label: "Cloud OCR (Gemini)", status: "pending" },
+      { id: "prep", label: "Preparing document", status: "processing" },
+      { id: "server", label: "Internal OCR (Tesseract)", status: "pending" },
       { id: "done", label: "Finalizing", status: "pending" },
     ]);
 
     try {
-      let fileToSend = file;
-      if (file.type === "application/pdf") {
-        const dataUrl = await pdfUtils.renderPageAsImage(file, 0);
-        const res = await fetch(dataUrl);
-        const blob = await res.blob();
-        fileToSend = new File([blob], "page1.png", { type: "image/png" });
-      }
-      
-      updateStep("prep", "completed");
-      updateStep("ai", "processing");
+      const fileToSend =
+        file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
+          ? file
+          : await imageFileToSinglePagePdf(file);
 
-      const text = await performOCRWithOpenRouter(fileToSend);
-      
-      updateStep("ai", "completed");
+      updateStep("prep", "completed");
+      updateStep("server", "processing");
+
+      const job = await submitPdfToMarkdownJob(fileToSend, {
+        mode: "accurate",
+        ocrEngine: "tesseract",
+        output: "single",
+      });
+      const completed = await pollPdfToMarkdownJob(job.jobId, job.downloadToken, () => undefined, 1000);
+      if (completed.status !== "completed") {
+        throw new Error(completed.error || completed.message || "Internal OCR job failed.");
+      }
+      const resultBlob = await downloadPdfToMarkdownResult(
+        job.jobId,
+        job.downloadToken,
+        completed.downloadUrl
+      );
+      const text = await resultBlob.text();
+
+      updateStep("server", "completed");
       updateStep("done", "processing");
-      
+
       setResultText(text);
       updateStep("done", "completed");
     } catch (e) {
       console.error(e);
-      updateStep("ai", "error");
-      alert("OCR failed. Please check your API key or network.");
+      updateStep("server", "error");
+      alert("OCR failed. The internal OCR server could not process this file.");
     } finally {
       setProcessing(false);
     }
@@ -1043,14 +1077,14 @@ export const OcrTool = () => {
 
   return (
     <ToolLayout 
-      title="OCR Text Extractor"
+      title="Internal OCR Text Extractor"
       icon={getToolByRoute("/ocr")?.icon}
       iconColorClass={getToolByRoute("/ocr")?.colorClass}
-      description={getToolByRoute("/ocr")?.shortDesc} 
+      description="Extract text with DocuFlow's internal Tesseract OCR. No external API key is required."
       isProcessing={processing}
       progressSteps={ocrSteps}
-      progressLabel="OCR Processing"
-      progressSubLabel={`Scanning ${file ? 1 : 0} file with OCR stages`}
+      progressLabel="Internal OCR Processing"
+      progressSubLabel={`Scanning ${file ? 1 : 0} file with local server OCR stages`}
     >
       {!file ? (
         <FileUpload
@@ -1079,15 +1113,18 @@ export const OcrTool = () => {
 
             {!resultText && (
               <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50 p-8 text-center">
-                <p className="text-gray-500 mb-6">
-                  Ready to scan. OCR will extract text from this document.
+                <p className="text-gray-500 mb-2">
+                  Ready to scan with DocuFlow's internal Tesseract OCR.
+                </p>
+                <p className="text-xs text-gray-400 mb-6">
+                  PDF, PNG, and JPG files are processed through the same server OCR pipeline. No OpenRouter, Gemini, or API key is used.
                 </p>
                 <button
                   type="button"
                   onClick={handleOcr}
                   className="px-10 py-4 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl shadow-lg shadow-violet-200 transition-all text-lg transform hover:-translate-y-0.5"
                 >
-                  Start OCR Extraction
+                  Start Internal OCR
                 </button>
               </div>
             )}
