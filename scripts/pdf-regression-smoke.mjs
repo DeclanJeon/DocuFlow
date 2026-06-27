@@ -137,7 +137,13 @@ const main = async () => {
     body: JSON.stringify({ html: '<html><body><h1>DocuFlow render regression</h1></body></html>' }),
   });
   const renderBytes = Buffer.from(await renderResponse.arrayBuffer());
-  assert(renderResponse.ok && renderBytes.subarray(0, 5).toString() === '%PDF-', 'render-pdf did not return a PDF');
+  assert(renderResponse.ok && renderBytes.subarray(0, 5).toString() === '%PDF-', 'render-pdf JSON did not return a PDF');
+
+  const multipartRenderForm = new FormData();
+  multipartRenderForm.append('html', new Blob(['<html><body><h1>DocuFlow multipart render regression</h1></body></html>'], { type: 'text/html' }), 'render.html');
+  const multipartRenderResponse = await fetch(`${API_BASE}/api/render-pdf`, { method: 'POST', body: multipartRenderForm });
+  const multipartRenderBytes = Buffer.from(await multipartRenderResponse.arrayBuffer());
+  assert(multipartRenderResponse.ok && multipartRenderBytes.subarray(0, 5).toString() === '%PDF-', 'render-pdf multipart did not return a PDF');
 
   const encryptedJob = await postPdf('/api/pdf/encrypt', { password: PASSWORD }, fixture.bytes);
   const encrypted = await downloadJob(encryptedJob);
@@ -186,7 +192,7 @@ const main = async () => {
   assert(hwp.contentType.includes('hwp'), 'PDF to HWP download did not return HWP content type');
   assert(hwp.bytes.subarray(0, 8).toString('hex') === 'd0cf11e0a1b11ae1', 'PDF to HWP did not return an HWP5/OLE file');
 
-  console.log('PDF regression smoke passed', JSON.stringify({ render: renderBytes.length, encrypted: encrypted.bytes.length, compressed: compressed.bytes.length, hwpPdf: hwpPdf.bytes.length, hwp: hwp.bytes.length }));
+  console.log('PDF regression smoke passed', JSON.stringify({ render: renderBytes.length, multipartRender: multipartRenderBytes.length, encrypted: encrypted.bytes.length, compressed: compressed.bytes.length, hwpPdf: hwpPdf.bytes.length, hwp: hwp.bytes.length }));
 };
 
 main().catch((error) => {

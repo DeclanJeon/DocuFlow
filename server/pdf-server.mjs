@@ -31,6 +31,9 @@ const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const PDF_UPLOAD_LIMIT = 100 * 1024 * 1024;
 const MARKDOWN_UPLOAD_LIMIT = 200 * 1024 * 1024;
 const HWP_UPLOAD_LIMIT = 200 * 1024 * 1024;
+const RENDER_HTML_UPLOAD_LIMIT = 200 * 1024 * 1024;
+const JSON_BODY_LIMIT_LABEL = "60MB";
+const RENDER_HTML_UPLOAD_LIMIT_LABEL = "200MB";
 const MULTIPART_OVERHEAD_LIMIT = 1024 * 1024;
 const PROCESS_TIMEOUT_MS = 120_000;
 const COMPLETE = new Set(["completed", "failed", "expired"]);
@@ -39,7 +42,16 @@ const PREFERRED_TESSERACT_LANGUAGES = ["kor", "eng"];
 const REQUIRED_SEARCHABLE_LANGUAGES = ["kor", "eng"];
 
 
-app.use(express.json({ limit: "60mb" }));
+const defaultJsonParser = express.json({ limit: "60mb" });
+const renderPdfJsonParser = express.json({ limit: "60mb" });
+
+app.use((req, res, next) => {
+  if (req.path === "/api/render-pdf") {
+    next();
+    return;
+  }
+  defaultJsonParser(req, res, next);
+});
 
 const jobs = new Map();
 let browserPromise;
@@ -343,7 +355,7 @@ const parseContentDisposition = (header) => {
   return fields;
 };
 
-const parseMultipart = async (req, { limitBytes, jobDir }) => {
+const parseMultipart = async (req, { limitBytes, jobDir, allowedExtensions = ["hwp", "hwpx", "pdf"], fallbackExtension = "pdf", fileRequiredMessage = "PDF file is required." }) => {
   const contentType = req.headers["content-type"] || "";
   const boundaryMatch = /boundary=(?:(?:"([^"]+)")|([^;]+))/i.exec(contentType);
   if (!boundaryMatch) {
@@ -400,7 +412,8 @@ const parseMultipart = async (req, { limitBytes, jobDir }) => {
         throw error;
       }
       const originalName = dispositionFilename(disposition);
-      const extension = /\.(hwp|hwpx|pdf)$/i.exec(originalName)?.[1]?.toLowerCase() || "pdf";
+      const extensionPattern = new RegExp(`\\.(${allowedExtensions.join("|")})$`, "i");
+      const extension = extensionPattern.exec(originalName)?.[1]?.toLowerCase() || fallbackExtension;
       const tempPath = path.join(jobDir, "upload.tmp");
       const inputPath = path.join(jobDir, `input.${extension}`);
       await fsp.writeFile(tempPath, content);
@@ -414,7 +427,7 @@ const parseMultipart = async (req, { limitBytes, jobDir }) => {
   }
 
   if (!file) {
-    const error = new Error("PDF file is required.");
+    const error = new Error(fileRequiredMessage);
     error.code = "FILE_REQUIRED";
     throw error;
   }
@@ -781,23 +794,27 @@ const runSearchablePdfJob = async (job, fields, file) => {
 };
 
 
-const renderHtmlFileToPdf = async (htmlPath, outputPath) => {
-  const html = await fsp.readFile(htmlPath, "utf8");
+const renderHtmlToPdfBuffer = async (html) => {
   let context;
   try {
     const browser = await getBrowser();
     context = await browser.newContext();
     const page = await context.newPage();
-    await page.setContent(html, { waitUntil: "networkidle" });
+    await page.setContent(html, { waitUntil: "domcontentloaded" });
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
       margin: { top: "14mm", right: "14mm", bottom: "14mm", left: "14mm" },
     });
-    await fsp.writeFile(outputPath, Buffer.from(pdfBuffer));
+    return Buffer.from(pdfBuffer);
   } finally {
     if (context) await context.close().catch(() => undefined);
   }
+};
+
+const renderHtmlFileToPdf = async (htmlPath, outputPath) => {
+  const html = await fsp.readFile(htmlPath, "utf8");
+  await fsp.writeFile(outputPath, await renderHtmlToPdfBuffer(html));
 };
 
 app.get("/health", (_req, res) => {
@@ -909,35 +926,60 @@ app.get("/api/ready", async (_req, res) => {
   });
 });
 
-app.post("/api/render-pdf", async (req, res) => {
-  let context;
+const isMultipartRequest = (req) => String(req.headers["content-type"] || "").toLowerCase().includes("multipart/form-data");
+
+const readRenderHtmlFromMultipart = async (req) => {
+  const renderDir = await fsp.mkdtemp(path.join(JOB_ROOT, "render-"));
   try {
-    const html = typeof req.body?.html === "string" ? req.body.html : "";
+    const upload = await parseMultipart(req, {
+      limitBytes: RENDER_HTML_UPLOAD_LIMIT,
+      jobDir: renderDir,
+      allowedExtensions: ["html", "htm"],
+      fallbackExtension: "html",
+      fileRequiredMessage: "HTML file field is required.",
+    });
+    return await fsp.readFile(upload.file.path, "utf8");
+  } finally {
+    await fsp.rm(renderDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+};
+
+const readRenderHtml = async (req) => {
+  if (isMultipartRequest(req)) {
+    return readRenderHtmlFromMultipart(req);
+  }
+  return typeof req.body?.html === "string" ? req.body.html : "";
+};
+
+app.post("/api/render-pdf", (req, res, next) => {
+  if (isMultipartRequest(req)) {
+    next();
+    return;
+  }
+  renderPdfJsonParser(req, res, next);
+}, async (req, res) => {
+  try {
+    const html = await readRenderHtml(req);
     if (!html.trim()) {
       res.status(400).json({ error: "html is required" });
       return;
     }
 
-    const browser = await getBrowser();
-    context = await browser.newContext();
-    const page = await context.newPage();
-
-    await page.setContent(html, { waitUntil: "networkidle" });
-
-    const pdfBuffer = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: "14mm", right: "14mm", bottom: "14mm", left: "14mm" },
-    });
-
-    await context.close();
-    context = undefined;
+    const pdfBuffer = await renderHtmlToPdfBuffer(html);
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Cache-Control", "no-store");
-    res.send(Buffer.from(pdfBuffer));
+    res.send(pdfBuffer);
   } catch (error) {
-    if (context) await context.close().catch(() => undefined);
+    if (error.code === "LIMIT_FILE_SIZE") {
+      jsonError(res, 413, "HTML_TOO_LARGE", `HTML payload exceeds the ${RENDER_HTML_UPLOAD_LIMIT_LABEL} /api/render-pdf multipart limit.`);
+      return;
+    }
+    if (error.code === "FILE_REQUIRED" || error.code === "INVALID_MULTIPART") {
+      jsonError(res, 400, error.code, error.message);
+      return;
+    }
+
     const message = error instanceof Error ? error.message : "unknown error";
     console.error("Headless PDF render failed", error);
 
@@ -1333,7 +1375,7 @@ app.get("/api/download/:jobId", async (req, res) => {
 
 app.use((error, _req, res, _next) => {
   if (error?.type === "entity.too.large") {
-    jsonError(res, 413, "JSON_TOO_LARGE", "JSON body exceeds the 60MB /api/render-pdf limit.");
+    jsonError(res, 413, "JSON_TOO_LARGE", `JSON body exceeds the ${JSON_BODY_LIMIT_LABEL} /api/render-pdf limit. Use multipart HTML upload for larger renders.`);
     return;
   }
   console.error("Unhandled PDF server error", error);

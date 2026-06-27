@@ -22,6 +22,9 @@ type ManifestEntry = {
   mediaType: string;
 };
 
+const EPUB_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+const EPUB_IMAGE_TOTAL_MAX_BYTES = 18 * 1024 * 1024;
+
 configurePdfJs();
 
 /**
@@ -144,6 +147,18 @@ const toBase64 = (bytes: Uint8Array) => {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
   }
   return btoa(binary);
+};
+
+const replaceImageWithPlaceholder = (
+  chapterDoc: Document,
+  imageNode: HTMLImageElement,
+  imagePath: string
+) => {
+  const placeholder = chapterDoc.createElement("p");
+  placeholder.className = "epub-image-placeholder";
+  const altText = imageNode.getAttribute("alt")?.trim();
+  placeholder.textContent = altText ? `[Image omitted: ${altText}]` : `[Image omitted: ${imagePath}]`;
+  imageNode.replaceWith(placeholder);
 };
 
 const toDataUrlFromBytes = (bytes: Uint8Array, mimeType: string) => {
@@ -299,6 +314,7 @@ export const epubToPdf = async (
     const baseDir = dirname(rootfilePath);
     const chapterPaths: string[] = [];
     const sharedStyleTexts: string[] = [];
+    let embeddedImageBytes = 0;
 
     for (const entry of manifestMap.values()) {
       if (!/css/i.test(entry.mediaType)) {
@@ -376,7 +392,9 @@ export const epubToPdf = async (
           if (cssText) chapterStyleTexts.push(cssText);
         }
 
-        const imageNodes = Array.from(chapterDoc.querySelectorAll("img[src]"));
+        const imageNodes = Array.from(chapterDoc.querySelectorAll("img[src]")).filter(
+          (node): node is HTMLImageElement => node instanceof HTMLImageElement
+        );
         for (const imageNode of imageNodes) {
           const src = imageNode.getAttribute("src");
           if (!src || src.startsWith("data:")) {
@@ -392,6 +410,19 @@ export const epubToPdf = async (
           }
 
           const bytes = new Uint8Array(await imageFile.async("arraybuffer"));
+          if (bytes.byteLength > EPUB_IMAGE_MAX_BYTES) {
+            incrementBucket(diagnostics.imageSkips, "image-too-large");
+            replaceImageWithPlaceholder(chapterDoc, imageNode, imagePath);
+            continue;
+          }
+
+          if (embeddedImageBytes + bytes.byteLength > EPUB_IMAGE_TOTAL_MAX_BYTES) {
+            incrementBucket(diagnostics.imageSkips, "image-budget-exceeded");
+            replaceImageWithPlaceholder(chapterDoc, imageNode, imagePath);
+            continue;
+          }
+
+          embeddedImageBytes += bytes.byteLength;
           imageNode.setAttribute("src", toDataUrlFromBytes(bytes, mimeType));
         }
 
@@ -458,6 +489,7 @@ export const epubToPdf = async (
       .epub-chapter { break-inside: avoid; page-break-after: always; margin: 0 0 24px; }
       .epub-chapter:last-child { page-break-after: auto; }
       img, svg { max-width: 100%; height: auto; }
+      .epub-image-placeholder { border: 1px dashed #94a3b8; border-radius: 8px; color: #64748b; font-size: 12px; margin: 12px 0; padding: 10px; }
       table { width: 100%; border-collapse: collapse; }
       pre { white-space: pre-wrap; word-break: break-word; }
       ${sharedStyleBlock}
@@ -473,12 +505,16 @@ export const epubToPdf = async (
 </html>`;
 
     emitProgress(92, "Rendering PDF headlessly");
+    const formData = new FormData();
+    formData.append(
+      "html",
+      new Blob([printHtml], { type: "text/html;charset=utf-8" }),
+      "epub.html"
+    );
+
     const response = await fetch("/api/render-pdf", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ html: printHtml }),
+      body: formData,
     });
 
     if (!response.ok) {
