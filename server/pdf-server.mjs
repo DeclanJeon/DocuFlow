@@ -13,7 +13,8 @@ const PORT = Number(process.env.PDF_SERVER_PORT || 4177);
 const JOB_ROOT = path.resolve(process.cwd(), "server-runtime", "jobs");
 const QPDF_PATH = process.env.QPDF_PATH || "qpdf";
 const GHOSTSCRIPT_PATH = process.env.GHOSTSCRIPT_PATH || process.env.GS_PATH || "gs";
-const OCRMYPDF_PATH = process.env.OCRMYPDF_PATH || "ocrmypdf";
+const LOCAL_OCRMYPDF = path.resolve(process.cwd(), ".venv-ocrmypdf", "bin", "ocrmypdf");
+const OCRMYPDF_PATH = process.env.OCRMYPDF_PATH || (fs.existsSync(LOCAL_OCRMYPDF) ? LOCAL_OCRMYPDF : "ocrmypdf");
 const LOCAL_PDFTOMD_PYTHON = path.resolve(process.cwd(), ".venv-pdftomd", "bin", "python");
 const PYTHON_PATH = process.env.PYTHON_PATH || (fs.existsSync(LOCAL_PDFTOMD_PYTHON) ? LOCAL_PDFTOMD_PYTHON : "python3");
 const PDFTOMD_SCRIPT_PATH = process.env.PDFTOMD_PATH || (fs.existsSync(path.resolve(process.cwd(), "../pdftomd/cli/pdf_to_md.py")) ? path.resolve(process.cwd(), "../pdftomd/cli/pdf_to_md.py") : path.resolve(process.cwd(), "pdftomd/pdf_to_md.py"));
@@ -24,6 +25,10 @@ const RHWP_INGEST_EXPORTER_PATH = process.env.RHWP_INGEST_EXPORTER_PATH || (fs.e
 const PDFTOHTML_PATH = process.env.PDFTOHTML_PATH || "pdftohtml";
 const PDFTOTEXT_PATH = process.env.PDFTOTEXT_PATH || "pdftotext";
 const PDFTOPPM_PATH = process.env.PDFTOPPM_PATH || "pdftoppm";
+const LOCAL_TESSERACT = path.resolve(process.cwd(), "server-runtime", "deps", "prefix", "bin", "tesseract");
+const TESSERACT_PATH = process.env.TESSERACT_PATH || (fs.existsSync(LOCAL_TESSERACT) ? LOCAL_TESSERACT : "tesseract");
+const LOCAL_TESSDATA_PREFIX = path.resolve(process.cwd(), "server-runtime", "deps", "prefix", "usr", "share", "tesseract-ocr", "5", "tessdata");
+const TESSDATA_PREFIX = process.env.TESSDATA_PREFIX || (fs.existsSync(LOCAL_TESSDATA_PREFIX) ? LOCAL_TESSDATA_PREFIX : process.env.TESSDATA_PREFIX);
 const JOB_TTL_MS = 30 * 60 * 1000;
 const ABANDONED_PROCESSING_TTL_MS = 20 * 60 * 1000;
 const STARTUP_ORPHAN_TTL_MS = 24 * 60 * 60 * 1000;
@@ -127,7 +132,14 @@ const commandAvailable = (command, args = ["--version"], timeout = 5000) =>
 
 const listTesseractLanguages = async () => {
   try {
-    const { stdout } = await execFileChecked("tesseract", ["--list-langs"], { timeout: 15_000 });
+    const { stdout } = await execFileChecked(TESSERACT_PATH, ["--list-langs"], {
+      timeout: 15_000,
+      env: {
+        ...process.env,
+        PATH: `${path.dirname(TESSERACT_PATH)}${path.delimiter}${process.env.PATH || ""}`,
+        ...(TESSDATA_PREFIX ? { TESSDATA_PREFIX } : {}),
+      },
+    });
     return new Set(
       String(stdout || "")
         .split(/\r?\n/)
@@ -659,11 +671,12 @@ const runPdfToMarkdownJob = async (job, fields, file) => {
   job.updatedAt = Date.now();
 
   const childEnv = {
-    PATH: process.env.PATH || "",
+    PATH: `${path.dirname(TESSERACT_PATH)}${path.delimiter}${process.env.PATH || ""}`,
     LANG: process.env.LANG || "C.UTF-8",
     LC_ALL: process.env.LC_ALL || "C.UTF-8",
     PYTHONUNBUFFERED: "1",
     HOME: pdftomdCwd,
+    ...(TESSDATA_PREFIX ? { TESSDATA_PREFIX } : {}),
   };
 
   const stderrLines = [];
@@ -769,9 +782,11 @@ const runSearchablePdfJob = async (job, fields, file) => {
       maxBuffer: 16 * 1024 * 1024,
       env: {
         ...process.env,
+        PATH: `${path.dirname(TESSERACT_PATH)}${path.delimiter}${process.env.PATH || ""}`,
         HOME: job.jobDir,
         LANG: process.env.LANG || "C.UTF-8",
         LC_ALL: process.env.LC_ALL || "C.UTF-8",
+        ...(TESSDATA_PREFIX ? { TESSDATA_PREFIX } : {}),
       },
     });
     await assertOutput(tempOutput);
@@ -800,7 +815,20 @@ const renderHtmlToPdfBuffer = async (html) => {
     const browser = await getBrowser();
     context = await browser.newContext();
     const page = await context.newPage();
-    await page.setContent(html, { waitUntil: "domcontentloaded" });
+    await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 120_000 });
+    await page.evaluate(async () => {
+      const images = Array.from(document.images || []);
+      await Promise.all(
+        images.map((img) => {
+          if (img.complete) return Promise.resolve();
+          return new Promise((resolve) => {
+            const done = () => resolve();
+            img.addEventListener("load", done, { once: true });
+            img.addEventListener("error", done, { once: true });
+          });
+        })
+      );
+    });
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
@@ -849,7 +877,7 @@ app.get("/api/ready", async (_req, res) => {
     commandAvailable(PDFTOTEXT_PATH, ["-v"]),
     commandAvailable(PDFTOPPM_PATH, ["-h"]),
     commandAvailable(RHWP_INGEST_EXPORTER_PATH, ["--version"]),
-    commandAvailable("tesseract", ["--version"]),
+    commandAvailable(TESSERACT_PATH, ["--version"]),
     commandAvailable(PYTHON_PATH, ["-c", "import rapidocr_onnxruntime"]),
     commandAvailable(PYTHON_PATH, ["-c", "import pdf2image"]),
     commandAvailable(PYTHON_PATH, ["-c", "import pypdf, pdfminer, pdfplumber"]),

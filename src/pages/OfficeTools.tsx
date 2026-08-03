@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import {
   FileType,
-  Printer,
   FileText,
   FileCode,
   CheckCircle,
@@ -169,101 +168,91 @@ export const PdfToDocxTool = () => {
 
 export const DocxToPdfTool = () => {
   const [file, setFile] = useState<File | null>(null);
-  const [htmlContent, setHtmlContent] = useState("");
   const [processing, setProcessing] = useState(false);
+  const [progressValue, setProgressValue] = useState<number | undefined>(undefined);
+  const [done, setDone] = useState(false);
 
   const handleConvert = async () => {
-    if (!file) return;
+    if (!file || processing) return;
     setProcessing(true);
+    setDone(false);
+    setProgressValue(0);
     try {
-      const html = await officeUtils.docxToPdf(file);
-      setHtmlContent(html);
+      await officeUtils.docxToPdf(file, (current, total) => {
+        const percent = total > 0 ? (current / total) * 100 : 0;
+        setProgressValue(Math.max(0, Math.min(100, percent)));
+      });
+      setProgressValue(100);
+      setDone(true);
     } catch (e) {
-      alert("변환 실패");
+      console.error(e);
+      const message = e instanceof Error ? e.message : "DOCX를 PDF로 변환하는데 실패했습니다.";
+      alert(message);
     } finally {
       setProcessing(false);
-    }
-  };
-
-  const handlePrint = () => {
-    const printWindow = window.open("", "", "width=800,height=600");
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Print to PDF</title>
-            <style>body { font-family: sans-serif; padding: 40px; line-height: 1.6; }</style>
-          </head>
-          <body>${htmlContent}</body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
+      setProgressValue(undefined);
     }
   };
 
   return (
-    <ToolLayout 
+    <ToolLayout
       title="Word to PDF"
       icon={getToolByRoute("/docx-to-pdf")?.icon}
       iconColorClass={getToolByRoute("/docx-to-pdf")?.colorClass}
-      description={getToolByRoute("/docx-to-pdf")?.shortDesc} 
+      description={getToolByRoute("/docx-to-pdf")?.shortDesc}
       isProcessing={processing}
+      progressValue={progressValue}
       progressLabel="Converting Word to PDF..."
-      progressSubLabel={`Rendering ${file ? 1 : 0} DOCX into print-ready layout`}
+      progressSubLabel={
+        file
+          ? `Rendering ${file.name} through the headless PDF server`
+          : "Upload a DOCX document to convert"
+      }
     >
       {!file ? (
         <FileUpload
-          onFilesSelected={(files) => setFile(files[0])}
+          onFilesSelected={(files) => {
+            setFile(files[0]);
+            setDone(false);
+          }}
           accept=".docx"
         />
-      ) : !htmlContent ? (
+      ) : (
         <div className="flex flex-col items-center justify-center h-full">
           <div className="bg-indigo-50 p-6 rounded-2xl mb-6">
             <FileType size={64} className="text-indigo-600" />
           </div>
-          <h3 className="text-xl font-bold mb-8">{file.name}</h3>
+          <h3 className="text-xl font-bold mb-4">{file.name}</h3>
           <p className="text-sm text-gray-500 mb-6 text-center max-w-md">
-            *클라이언트 보안 정책상, 문서를 렌더링한 후 'PDF로 저장' 기능을
-            사용해야 합니다.
+            Converts DOCX to HTML first, then renders a downloadable PDF through
+            the DocuFlow render server.
           </p>
-          <button
-            type="button"
-            onClick={handleConvert}
-            className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg transition-all text-lg"
-          >
-            Preview & Print to PDF
-          </button>
-        </div>
-      ) : (
-        <div className="flex flex-col h-full">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold">Preview</h3>
+          {done ? (
+            <div className="mb-6 flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-100 px-4 py-3 rounded-xl">
+              <CheckCircle size={18} />
+              <span className="text-sm font-medium">PDF download started.</span>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center justify-center gap-3">
             <button
               type="button"
-              onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+              onClick={handleConvert}
+              disabled={processing}
+              className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-bold rounded-xl shadow-lg transition-all text-lg"
             >
-              <Printer size={16} /> Print / Save as PDF
+              {processing ? "Converting..." : done ? "Convert Again" : "Convert to PDF"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFile(null);
+                setDone(false);
+              }}
+              className="px-6 py-3 text-gray-600 hover:text-gray-800"
+            >
+              Choose another file
             </button>
           </div>
-          <div className="flex-1 bg-white border border-gray-200 rounded-xl p-8 overflow-y-auto shadow-inner">
-            <div
-              dangerouslySetInnerHTML={{ __html: htmlContent }}
-              className="prose max-w-none"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setFile(null);
-              setHtmlContent("");
-            }}
-            className="mt-4 text-center text-gray-500 hover:text-gray-700"
-          >
-            Convert Another
-          </button>
         </div>
       )}
     </ToolLayout>

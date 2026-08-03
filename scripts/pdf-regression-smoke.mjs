@@ -50,11 +50,21 @@ const createFixture = async () => {
 const createHwpxFixture = async () => {
   await fs.mkdir(FIXTURE_DIR, { recursive: true });
   const zip = new JSZip();
+  // Keep Contents/section0.xml as the primary text source for hwpx2html fallback.
+  zip.file('Contents/header.xml', `<?xml version="1.0" encoding="UTF-8"?>
+<hh:head xmlns:hh="http://www.hancom.co.kr/hwpml/2011/head"></hh:head>`);
   zip.file('Contents/section0.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
   <hp:p><hp:run><hp:t>DocuFlow HWPX fallback smoke</hp:t></hp:run></hp:p>
   <hp:p><hp:run><hp:t>한글 문서 변환 테스트</hp:t></hp:run></hp:p>
 </hs:sec>`);
+  zip.file('Contents/content.hpf', `<?xml version="1.0" encoding="UTF-8"?>
+<opf:package xmlns:opf="http://www.idpf.org/2007/opf">
+  <opf:manifest>
+    <opf:item id="header" href="header.xml" media-type="application/xml"/>
+    <opf:item id="section0" href="section0.xml" media-type="application/xml"/>
+  </opf:manifest>
+</opf:package>`);
   const bytes = await zip.generateAsync({ type: 'nodebuffer' });
   const filePath = path.join(FIXTURE_DIR, 'regression-smoke.hwpx');
   await fs.writeFile(filePath, bytes);

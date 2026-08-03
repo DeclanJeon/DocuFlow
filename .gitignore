@@ -34,5 +34,8 @@ metadata.json
 
 docs
 server-runtime/
+.venv-pdftomd/
+.venv-ocrmypdf/
+pdftomd/__pycache__/
 report/
 deploy.*

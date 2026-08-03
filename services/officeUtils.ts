@@ -137,7 +137,47 @@ const toAssetMimeType = (path: string): string | null => {
   if (lower.endsWith(".gif")) return "image/gif";
   if (lower.endsWith(".webp")) return "image/webp";
   if (lower.endsWith(".svg")) return "image/svg+xml";
+  if (lower.endsWith(".bmp")) return "image/bmp";
+  if (lower.endsWith(".avif")) return "image/avif";
   return null;
+};
+
+const XLINK_NS = "http://www.w3.org/1999/xlink";
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const getSvgImageHref = (node: Element) =>
+  node.getAttributeNS(XLINK_NS, "href") ||
+  node.getAttribute("href") ||
+  node.getAttribute("xlink:href");
+
+const setSvgImageHref = (node: Element, href: string) => {
+  node.setAttribute("href", href);
+  if (node.hasAttribute("xlink:href")) {
+    node.setAttribute("xlink:href", href);
+  }
+  try {
+    node.setAttributeNS(XLINK_NS, "href", href);
+  } catch {
+    // Some browsers reject namespaced writes on HTML-parsed nodes.
+  }
+};
+
+const stripCssQuotes = (value: string) => {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
 };
 
 const toBase64 = (bytes: Uint8Array) => {
@@ -149,15 +189,19 @@ const toBase64 = (bytes: Uint8Array) => {
   return btoa(binary);
 };
 
-const replaceImageWithPlaceholder = (
-  chapterDoc: Document,
-  imageNode: HTMLImageElement,
-  imagePath: string
-) => {
-  const placeholder = chapterDoc.createElement("p");
+const replaceImageWithPlaceholder = (imageNode: Element, imagePath: string) => {
+  const doc = imageNode.ownerDocument;
+  if (!doc) {
+    imageNode.remove();
+    return;
+  }
+
+  const placeholder = doc.createElement("p");
   placeholder.className = "epub-image-placeholder";
   const altText = imageNode.getAttribute("alt")?.trim();
-  placeholder.textContent = altText ? `[Image omitted: ${altText}]` : `[Image omitted: ${imagePath}]`;
+  placeholder.textContent = altText
+    ? `[Image omitted: ${altText}]`
+    : `[Image omitted: ${imagePath}]`;
   imageNode.replaceWith(placeholder);
 };
 
@@ -167,6 +211,197 @@ const toDataUrlFromBytes = (bytes: Uint8Array, mimeType: string) => {
     return `data:${mimeType};charset=utf-8,${encodeURIComponent(svgText)}`;
   }
   return `data:${mimeType};base64,${toBase64(bytes)}`;
+};
+
+const createZipAssetLoader = (
+  zip: JSZip,
+  diagnostics: EpubConversionDiagnostics
+) => {
+  let embeddedImageBytes = 0;
+  let loadChain: Promise<void> = Promise.resolve();
+  const cache = new Map<string, Promise<string | null>>();
+
+  const loadDataUrl = (assetPath: string): Promise<string | null> => {
+    const normalized = normalizePath(assetPath);
+    const cached = cache.get(normalized);
+    if (cached) {
+      return cached;
+    }
+
+    const pending = new Promise<string | null>((resolve) => {
+      loadChain = loadChain
+        .then(async () => {
+          try {
+            const mimeType = toAssetMimeType(normalized);
+            const imageFile = zip.file(normalized);
+            if (!mimeType || !imageFile) {
+              incrementBucket(diagnostics.imageSkips, "image-file-missing");
+              resolve(null);
+              return;
+            }
+
+            const bytes = new Uint8Array(await imageFile.async("arraybuffer"));
+            if (bytes.byteLength > EPUB_IMAGE_MAX_BYTES) {
+              incrementBucket(diagnostics.imageSkips, "image-too-large");
+              resolve(null);
+              return;
+            }
+
+            if (embeddedImageBytes + bytes.byteLength > EPUB_IMAGE_TOTAL_MAX_BYTES) {
+              incrementBucket(diagnostics.imageSkips, "image-budget-exceeded");
+              resolve(null);
+              return;
+            }
+
+            embeddedImageBytes += bytes.byteLength;
+            resolve(toDataUrlFromBytes(bytes, mimeType));
+          } catch {
+            incrementBucket(diagnostics.imageSkips, "image-load-failed");
+            resolve(null);
+          }
+        })
+        .catch(() => {
+          incrementBucket(diagnostics.imageSkips, "image-load-failed");
+          resolve(null);
+        });
+    });
+
+    cache.set(normalized, pending);
+    return pending;
+  };
+
+  const inlineCssUrls = async (cssText: string, cssDir: string) => {
+    const matches = Array.from(
+      cssText.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi)
+    );
+    if (!matches.length) {
+      return cssText;
+    }
+
+    const replacements = new Map<string, string>();
+    for (const match of matches) {
+      const rawUrl = stripCssQuotes(match[2] || "");
+      if (
+        !rawUrl ||
+        rawUrl.startsWith("data:") ||
+        /^[a-z][a-z0-9+.-]*:/i.test(rawUrl)
+      ) {
+        continue;
+      }
+
+      const assetPath = resolvePath(cssDir, sanitizeHref(rawUrl));
+      if (replacements.has(assetPath)) {
+        continue;
+      }
+
+      const dataUrl = await loadDataUrl(assetPath);
+      if (dataUrl) {
+        replacements.set(assetPath, dataUrl);
+      }
+    }
+
+    if (!replacements.size) {
+      return cssText;
+    }
+
+    return cssText.replace(
+      /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi,
+      (full, _quote: string, value: string) => {
+        const rawUrl = stripCssQuotes(String(value || ""));
+        if (
+          !rawUrl ||
+          rawUrl.startsWith("data:") ||
+          /^[a-z][a-z0-9+.-]*:/i.test(rawUrl)
+        ) {
+          return full;
+        }
+
+        const assetPath = resolvePath(cssDir, sanitizeHref(rawUrl));
+        const dataUrl = replacements.get(assetPath);
+        return dataUrl ? `url("${dataUrl}")` : full;
+      }
+    );
+  };
+
+  const inlineDocumentAssets = async (doc: Document, chapterDir: string) => {
+    const imageNodes = Array.from(doc.querySelectorAll("img")).filter(
+      (node): node is HTMLImageElement => node instanceof HTMLImageElement
+    );
+
+    for (const imageNode of imageNodes) {
+      const src =
+        imageNode.getAttribute("src") ||
+        imageNode.getAttribute("xlink:href") ||
+        imageNode.getAttributeNS(XLINK_NS, "href");
+      if (!src || src.startsWith("data:") || /^[a-z][a-z0-9+.-]*:/i.test(src)) {
+        continue;
+      }
+
+      const imagePath = resolvePath(chapterDir, sanitizeHref(src));
+      const dataUrl = await loadDataUrl(imagePath);
+      if (!dataUrl) {
+        replaceImageWithPlaceholder(imageNode, imagePath);
+        continue;
+      }
+
+      imageNode.setAttribute("src", dataUrl);
+    }
+
+    const svgImageNodes = Array.from(doc.getElementsByTagName("image"));
+    for (const imageNode of svgImageNodes) {
+      const href = getSvgImageHref(imageNode);
+      if (!href || href.startsWith("data:") || /^[a-z][a-z0-9+.-]*:/i.test(href)) {
+        continue;
+      }
+
+      const imagePath = resolvePath(chapterDir, sanitizeHref(href));
+      const dataUrl = await loadDataUrl(imagePath);
+      if (!dataUrl) {
+        replaceImageWithPlaceholder(imageNode, imagePath);
+        continue;
+      }
+
+      setSvgImageHref(imageNode, dataUrl);
+    }
+  };
+
+  return {
+    inlineCssUrls,
+    inlineDocumentAssets,
+  };
+};
+
+const parseChapterDocument = (markup: string, parser: DOMParser) => {
+  const xhtmlDoc = parser.parseFromString(markup, "application/xhtml+xml");
+  const hasParseError =
+    xhtmlDoc.getElementsByTagName("parsererror").length > 0 ||
+    Boolean(xhtmlDoc.querySelector?.("parsererror"));
+
+  if (!hasParseError && (xhtmlDoc.body || xhtmlDoc.documentElement)) {
+    return xhtmlDoc;
+  }
+
+  return parser.parseFromString(markup, "text/html");
+};
+
+const extractChapterBodyMarkup = (doc: Document) => {
+  if (doc.body?.innerHTML?.trim()) {
+    return doc.body.innerHTML.trim();
+  }
+
+  const root = doc.documentElement;
+  if (!root) {
+    return "";
+  }
+
+  // XHTML cover documents sometimes expose content without a HTMLBodyElement.
+  const cloned = root.cloneNode(true) as Element;
+  for (const child of Array.from(cloned.children)) {
+    if (child.tagName.toLowerCase() === "head") {
+      child.remove();
+    }
+  }
+  return (cloned.innerHTML || "").trim();
 };
 
 const stripFileExtension = (name: string) => name.replace(/\.[^.]+$/, "");
@@ -314,7 +549,7 @@ export const epubToPdf = async (
     const baseDir = dirname(rootfilePath);
     const chapterPaths: string[] = [];
     const sharedStyleTexts: string[] = [];
-    let embeddedImageBytes = 0;
+    const assets = createZipAssetLoader(zip, diagnostics);
 
     for (const entry of manifestMap.values()) {
       if (!/css/i.test(entry.mediaType)) {
@@ -324,7 +559,7 @@ export const epubToPdf = async (
       const cssPath = resolvePath(baseDir, entry.href);
       const cssText = await zip.file(cssPath)?.async("string");
       if (cssText) {
-        sharedStyleTexts.push(cssText);
+        sharedStyleTexts.push(await assets.inlineCssUrls(cssText, dirname(cssPath)));
       }
     }
 
@@ -355,96 +590,66 @@ export const epubToPdf = async (
     const chapterHtmlSections = await mapWithConcurrency<
       string,
       { bodyMarkup: string; styleText: string }
-    >(
-      chapterPaths,
-      4,
-      async (chapterPath) => {
-        const chapterMarkup = await zip.file(chapterPath)?.async("string");
-        if (!chapterMarkup) {
-          incrementBucket(diagnostics.chapterSkips, "chapter-file-missing");
-          preparedCount += 1;
-          emitProgress(
-            52 + Math.round((preparedCount / chapterCount) * 28),
-            `Prepared chapter ${preparedCount} of ${chapterCount}`
-          );
-          return { bodyMarkup: "", styleText: "" };
-        }
-
-        const parser = new DOMParser();
-        const chapterDoc = parser.parseFromString(chapterMarkup, "text/html");
-        const chapterDir = dirname(chapterPath);
-
-        const chapterStyleTexts: string[] = [];
-        const styleNodes = Array.from(chapterDoc.querySelectorAll("style"));
-        for (const styleNode of styleNodes) {
-          const text = styleNode.textContent?.trim();
-          if (text) chapterStyleTexts.push(text);
-        }
-
-        const linkNodes = Array.from(
-          chapterDoc.querySelectorAll("link[rel~='stylesheet'][href]")
-        );
-        for (const linkNode of linkNodes) {
-          const href = linkNode.getAttribute("href");
-          if (!href) continue;
-          const cssPath = resolvePath(chapterDir, sanitizeHref(href));
-          const cssText = await zip.file(cssPath)?.async("string");
-          if (cssText) chapterStyleTexts.push(cssText);
-        }
-
-        const imageNodes = Array.from(chapterDoc.querySelectorAll("img[src]")).filter(
-          (node): node is HTMLImageElement => node instanceof HTMLImageElement
-        );
-        for (const imageNode of imageNodes) {
-          const src = imageNode.getAttribute("src");
-          if (!src || src.startsWith("data:")) {
-            continue;
-          }
-
-          const imagePath = resolvePath(chapterDir, sanitizeHref(src));
-          const mimeType = toAssetMimeType(imagePath);
-          const imageFile = zip.file(imagePath);
-          if (!mimeType || !imageFile) {
-            incrementBucket(diagnostics.imageSkips, "image-file-missing");
-            continue;
-          }
-
-          const bytes = new Uint8Array(await imageFile.async("arraybuffer"));
-          if (bytes.byteLength > EPUB_IMAGE_MAX_BYTES) {
-            incrementBucket(diagnostics.imageSkips, "image-too-large");
-            replaceImageWithPlaceholder(chapterDoc, imageNode, imagePath);
-            continue;
-          }
-
-          if (embeddedImageBytes + bytes.byteLength > EPUB_IMAGE_TOTAL_MAX_BYTES) {
-            incrementBucket(diagnostics.imageSkips, "image-budget-exceeded");
-            replaceImageWithPlaceholder(chapterDoc, imageNode, imagePath);
-            continue;
-          }
-
-          embeddedImageBytes += bytes.byteLength;
-          imageNode.setAttribute("src", toDataUrlFromBytes(bytes, mimeType));
-        }
-
-        const bodyMarkup = chapterDoc.body?.innerHTML?.trim() || "";
-        if (!bodyMarkup) {
-          incrementBucket(diagnostics.chapterSkips, "chapter-extraction-empty");
-        }
-
+    >(chapterPaths, 4, async (chapterPath) => {
+      const chapterMarkup = await zip.file(chapterPath)?.async("string");
+      if (!chapterMarkup) {
+        incrementBucket(diagnostics.chapterSkips, "chapter-file-missing");
         preparedCount += 1;
         emitProgress(
           52 + Math.round((preparedCount / chapterCount) * 28),
           `Prepared chapter ${preparedCount} of ${chapterCount}`
         );
-
-        return {
-          bodyMarkup,
-          styleText: chapterStyleTexts.join("\n"),
-        };
+        return { bodyMarkup: "", styleText: "" };
       }
-    );
 
-    const validSections = chapterHtmlSections.filter((section) => section.bodyMarkup.length > 0);
+      const chapterParser = new DOMParser();
+      const chapterDoc = parseChapterDocument(chapterMarkup, chapterParser);
+      const chapterDir = dirname(chapterPath);
+
+      const chapterStyleTexts: string[] = [];
+      const styleNodes = Array.from(chapterDoc.querySelectorAll("style"));
+      for (const styleNode of styleNodes) {
+        const text = styleNode.textContent?.trim();
+        if (text) {
+          chapterStyleTexts.push(await assets.inlineCssUrls(text, chapterDir));
+        }
+      }
+
+      const linkNodes = Array.from(
+        chapterDoc.querySelectorAll("link[rel~='stylesheet'][href], link[rel='stylesheet'][href]")
+      );
+      for (const linkNode of linkNodes) {
+        const href = linkNode.getAttribute("href");
+        if (!href) continue;
+        const cssPath = resolvePath(chapterDir, sanitizeHref(href));
+        const cssText = await zip.file(cssPath)?.async("string");
+        if (cssText) {
+          chapterStyleTexts.push(await assets.inlineCssUrls(cssText, dirname(cssPath)));
+        }
+      }
+
+      await assets.inlineDocumentAssets(chapterDoc, chapterDir);
+
+      const bodyMarkup = extractChapterBodyMarkup(chapterDoc);
+      if (!bodyMarkup) {
+        incrementBucket(diagnostics.chapterSkips, "chapter-extraction-empty");
+      }
+
+      preparedCount += 1;
+      emitProgress(
+        52 + Math.round((preparedCount / chapterCount) * 28),
+        `Prepared chapter ${preparedCount} of ${chapterCount}`
+      );
+
+      return {
+        bodyMarkup,
+        styleText: chapterStyleTexts.join("\n"),
+      };
+    });
+
+    const validSections = chapterHtmlSections.filter(
+      (section) => section.bodyMarkup.length > 0
+    );
     if (!validSections.length) {
       const details = Array.from(diagnostics.chapterSkips.entries())
         .map(([reason, count]) => `${reason}:${count}`)
@@ -471,25 +676,53 @@ export const epubToPdf = async (
       )
       .join("\n");
 
-    const chapterStyleBlock = validSections.map((section) => section.styleText).join("\n");
+    const chapterStyleBlock = validSections
+      .map((section) => section.styleText)
+      .join("\n");
     const sharedStyleBlock = sharedStyleTexts.join("\n");
+    const safeTitle = escapeHtml(title);
 
     const printHtml = `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${title}</title>
+    <title>${safeTitle}</title>
     <style>
       @page { size: A4; margin: 14mm; }
       html, body { margin: 0; padding: 0; background: #fff; }
-      body { font-family: "Noto Serif", "Apple SD Gothic Neo", "Noto Sans CJK KR", "Noto Sans CJK JP", "Noto Sans CJK SC", serif; color: #111; line-height: 1.5; }
+      body {
+        font-family: "Noto Serif", "Apple SD Gothic Neo", "Noto Sans CJK KR",
+          "Noto Sans CJK JP", "Noto Sans CJK SC", "Noto Sans KR", serif;
+        color: #111;
+        line-height: 1.55;
+        font-size: 12pt;
+      }
       .epub-book { max-width: 900px; margin: 0 auto; }
-      .epub-title { font-size: 28px; font-weight: 700; margin: 0 0 24px; page-break-after: avoid; }
-      .epub-chapter { break-inside: avoid; page-break-after: always; margin: 0 0 24px; }
+      .epub-title {
+        font-size: 28px;
+        font-weight: 700;
+        margin: 0 0 24px;
+        page-break-after: avoid;
+      }
+      /* Allow multi-page chapters; only break between spine items. */
+      .epub-chapter {
+        break-inside: auto;
+        page-break-inside: auto;
+        page-break-after: always;
+        margin: 0 0 24px;
+      }
       .epub-chapter:last-child { page-break-after: auto; }
       img, svg { max-width: 100%; height: auto; }
-      .epub-image-placeholder { border: 1px dashed #94a3b8; border-radius: 8px; color: #64748b; font-size: 12px; margin: 12px 0; padding: 10px; }
+      svg image { max-width: 100%; }
+      .epub-image-placeholder {
+        border: 1px dashed #94a3b8;
+        border-radius: 8px;
+        color: #64748b;
+        font-size: 12px;
+        margin: 12px 0;
+        padding: 10px;
+      }
       table { width: 100%; border-collapse: collapse; }
       pre { white-space: pre-wrap; word-break: break-word; }
       ${sharedStyleBlock}
@@ -498,7 +731,7 @@ export const epubToPdf = async (
   </head>
   <body>
     <main class="epub-book">
-      <h1 class="epub-title">${title}</h1>
+      <h1 class="epub-title">${safeTitle}</h1>
       ${chapterMarkup}
     </main>
   </body>
@@ -523,14 +756,27 @@ export const epubToPdf = async (
         const payload = await response.json();
         if (payload && typeof payload.error === "string") {
           serverError = payload.error;
+        } else if (payload && typeof payload.message === "string") {
+          serverError = payload.message;
         }
       } catch {
+        // Keep the default error when the body is not JSON.
       }
       throw new Error(serverError);
     }
 
     emitProgress(98, "Downloading file");
     const pdfBlob = await response.blob();
+    if (!pdfBlob.size) {
+      throw new Error("EPUB 변환 실패: 빈 PDF가 반환되었습니다.");
+    }
+
+    const header = new Uint8Array(await pdfBlob.slice(0, 5).arrayBuffer());
+    const magic = String.fromCharCode(...header);
+    if (magic !== "%PDF-") {
+      throw new Error("EPUB 변환 실패: 서버가 PDF가 아닌 응답을 반환했습니다.");
+    }
+
     saveAs(pdfBlob, `${stripFileExtension(file.name)}.pdf`);
     emitProgress(100, "Done");
   } catch (error) {
@@ -543,16 +789,99 @@ export const epubToPdf = async (
 };
 
 /**
- * DOCX to PDF: Mammoth를 이용한 HTML 변환 -> 인쇄/PDF 저장 유도
- * (클라이언트 사이드에서 완벽한 바이너리 변환은 불가능하므로, 미리보기를 띄우고 인쇄를 유도합니다)
+ * DOCX to PDF: Mammoth HTML conversion, then headless render via /api/render-pdf.
  */
-export const docxToPdf = async (file: File): Promise<string> => {
+export const docxToPdf = async (
+  file: File,
+  onProgress?: ProgressCallback
+): Promise<void> => {
   try {
+    onProgress?.(10, 100, "Converting DOCX to HTML");
     const arrayBuffer = await file.arrayBuffer();
     const result = await mammoth.convertToHtml({ arrayBuffer });
-    return result.value; // 변환된 HTML 문자열 반환
+    const bodyHtml = result.value?.trim();
+    if (!bodyHtml) {
+      throw new Error("DOCX에서 변환 가능한 본문을 찾지 못했습니다.");
+    }
+
+    const safeTitle = escapeHtml(stripFileExtension(file.name) || "document");
+    const printHtml = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>${safeTitle}</title>
+    <style>
+      @page { size: A4; margin: 16mm; }
+      html, body { margin: 0; padding: 0; background: #fff; }
+      body {
+        font-family: "Noto Sans CJK KR", "Apple SD Gothic Neo", "Noto Sans KR",
+          "Malgun Gothic", sans-serif;
+        color: #111;
+        line-height: 1.6;
+        font-size: 12pt;
+        padding: 0;
+      }
+      .docx-root { max-width: 900px; margin: 0 auto; }
+      img { max-width: 100%; height: auto; }
+      table { width: 100%; border-collapse: collapse; }
+      td, th { border: 1px solid #d1d5db; padding: 6px 8px; vertical-align: top; }
+      pre { white-space: pre-wrap; word-break: break-word; }
+      h1, h2, h3, h4 { page-break-after: avoid; }
+      p { margin: 0 0 0.75em; }
+    </style>
+  </head>
+  <body>
+    <main class="docx-root">${bodyHtml}</main>
+  </body>
+</html>`;
+
+    onProgress?.(70, 100, "Rendering PDF");
+    const formData = new FormData();
+    formData.append(
+      "html",
+      new Blob([printHtml], { type: "text/html;charset=utf-8" }),
+      "docx.html"
+    );
+
+    const response = await fetch("/api/render-pdf", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      let serverError = "DOCX PDF 렌더링에 실패했습니다.";
+      try {
+        const payload = await response.json();
+        if (payload && typeof payload.error === "string") {
+          serverError = payload.error;
+        } else if (payload && typeof payload.message === "string") {
+          serverError = payload.message;
+        }
+      } catch {
+        // Keep default message.
+      }
+      throw new Error(serverError);
+    }
+
+    onProgress?.(95, 100, "Downloading PDF");
+    const pdfBlob = await response.blob();
+    if (!pdfBlob.size) {
+      throw new Error("DOCX 변환 실패: 빈 PDF가 반환되었습니다.");
+    }
+    const header = new Uint8Array(await pdfBlob.slice(0, 5).arrayBuffer());
+    const magic = String.fromCharCode(...header);
+    if (magic !== "%PDF-") {
+      throw new Error("DOCX 변환 실패: 서버가 PDF가 아닌 응답을 반환했습니다.");
+    }
+
+    saveAs(pdfBlob, `${stripFileExtension(file.name)}.pdf`);
+    onProgress?.(100, 100, "Done");
   } catch (error) {
     console.error("DOCX to PDF Error:", error);
+    if (error instanceof Error) {
+      throw error;
+    }
     throw new Error("DOCX 변환에 실패했습니다.");
   }
 };
+

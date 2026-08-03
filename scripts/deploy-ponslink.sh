@@ -52,7 +52,7 @@ rsync -avz \
 ssh "${REMOTE}" "mkdir -p ${REMOTE_DIR}/server-runtime/jobs ${REMOTE_DIR}/server-runtime/fixtures && chmod 755 ${REMOTE_DIR}/server-runtime"
 
 rsync -avz \
-  ../pdftomd/cli/ \
+  pdftomd/ \
   "${REMOTE}:${REMOTE_DIR}/pdftomd/"
 
 rsync -avz \
