@@ -41,6 +41,13 @@ export interface PdfMarkdownDiagnostics {
   lowConfidenceLineCount?: number;
   lowConfidenceLinePreview?: string[];
   candidateSummary?: PdfMarkdownCandidateSummary[];
+  extractor?: string;
+  pdfType?: string;
+  confidence?: number;
+  pagesNeedingOcr?: number[];
+  hasEncodingIssues?: boolean;
+  pagesWithTables?: number[];
+  legacyFallbackPages?: number;
 }
 
 export interface PdfMarkdownJobCreated {
@@ -103,6 +110,11 @@ const readNumberArray = (record: Record<string, unknown>, key: string) => {
     : undefined;
 };
 
+const readBoolean = (record: Record<string, unknown>, key: string) => {
+  const value = record[key];
+  return typeof value === "boolean" ? value : undefined;
+};
+
 const readCandidateSummary = (record: Record<string, unknown>) => {
   const value = record.candidateSummary;
   if (!Array.isArray(value)) return undefined;
@@ -150,6 +162,13 @@ const parseDiagnostics = (value: unknown): PdfMarkdownDiagnostics | undefined =>
     lowConfidenceLineCount: readNumber(value, "lowConfidenceLineCount"),
     lowConfidenceLinePreview: readStringArray(value, "lowConfidenceLinePreview"),
     candidateSummary: readCandidateSummary(value),
+    extractor: readString(value, "extractor"),
+    pdfType: readString(value, "pdfType"),
+    confidence: readNumber(value, "confidence"),
+    pagesNeedingOcr: readNumberArray(value, "pagesNeedingOcr"),
+    hasEncodingIssues: readBoolean(value, "hasEncodingIssues"),
+    pagesWithTables: readNumberArray(value, "pagesWithTables"),
+    legacyFallbackPages: readNumber(value, "legacyFallbackPages"),
   };
 };
 

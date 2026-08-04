@@ -605,6 +605,16 @@ const createMarkdownZip = async (outputs, targetPath) => {
   await fsp.writeFile(targetPath, zipBuffer);
 };
 
+const parseMarkdownIntList = (raw) => {
+  if (!raw || !raw.startsWith("[")) return [];
+  try {
+    const parsed = JSON.parse(raw.replace(/'/g, '"'));
+    return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : [];
+  } catch {
+    return [];
+  }
+};
+
 const enrichMarkdownDiagnostics = (diagnostics) => {
   for (const warning of diagnostics.warnings) {
     const estimated = /estimated_pages=(\d+)/.exec(warning);
@@ -644,6 +654,17 @@ const enrichMarkdownDiagnostics = (diagnostics) => {
       diagnostics.dpiCandidates = renderer[2].split(",").map((value) => Number(value)).filter((value) => Number.isFinite(value));
       diagnostics.ocrAccuracy = renderer[3];
     }
+    const inspector = /engine=pdf_inspector pdf_type=(\S+) confidence=([0-9.]+) pages_needing_ocr=(\[[^\]]*\]) has_encoding_issues=(\S+) pages_with_tables=(\[[^\]]*\])/.exec(warning);
+    if (inspector) {
+      diagnostics.extractor = "pdf-inspector";
+      diagnostics.pdfType = inspector[1];
+      diagnostics.confidence = Number(inspector[2]);
+      diagnostics.pagesNeedingOcr = parseMarkdownIntList(inspector[3]);
+      diagnostics.hasEncodingIssues = inspector[4] === "true";
+      diagnostics.pagesWithTables = parseMarkdownIntList(inspector[5]);
+    }
+    const legacyFilled = /pdf_inspector_pages_filled_from_legacy=(\d+)/.exec(warning);
+    if (legacyFilled) diagnostics.legacyFallbackPages = Number(legacyFilled[1]);
   }
   if (!diagnostics.engine && diagnostics.ocrEngine && diagnostics.ocrEngine !== "none") diagnostics.engine = diagnostics.ocrEngine;
 };
@@ -867,6 +888,7 @@ app.get("/api/ready", async (_req, res) => {
     rapidocr,
     pdf2image,
     pdftomdBaseDeps,
+    pdfinspector,
     soffice,
   ] = await Promise.all([
     commandAvailable(QPDF_PATH),
@@ -881,6 +903,7 @@ app.get("/api/ready", async (_req, res) => {
     commandAvailable(PYTHON_PATH, ["-c", "import rapidocr_onnxruntime"]),
     commandAvailable(PYTHON_PATH, ["-c", "import pdf2image"]),
     commandAvailable(PYTHON_PATH, ["-c", "import pypdf, pdfminer, pdfplumber"]),
+    commandAvailable(PYTHON_PATH, ["-c", "import pdf_inspector"]),
     commandAvailable(SOFFICE_PATH, ["--version"]),
   ]);
   const tesseractLanguages = await listTesseractLanguages();
@@ -895,6 +918,16 @@ app.get("/api/ready", async (_req, res) => {
     available: python.available && pdftomdScriptExists,
     command: `${PYTHON_PATH} ${PDFTOMD_SCRIPT_PATH}`,
     detail: pdftomdScriptExists ? python.detail : `pdftomd script missing at ${PDFTOMD_SCRIPT_PATH}`,
+    extractors: {
+      pdfInspector: {
+        ...pdfinspector,
+        requiredFor: ["/api/convert/pdf-to-markdown"],
+        detail: pdfinspector.available
+          ? "Layout-aware Markdown extraction (no OCR) via firecrawl/pdf-inspector is the default engine."
+          : "pdf-inspector is not installed; falling back to pypdf/pdfplumber text extraction.",
+      },
+      legacy: { ...pdftomdBaseDeps },
+    },
   };
   const ocr = {
     requiredFor: ["/api/convert/pdf-to-markdown", "/api/ocr/searchable-pdf"],

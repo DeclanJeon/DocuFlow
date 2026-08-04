@@ -32,12 +32,12 @@ echo "[4/8] Setting up pdftomd Python environment..."
 ssh "${REMOTE}" "cd ${REMOTE_DIR} && \
   if [ ! -d .venv-pdftomd ]; then python3 -m venv .venv-pdftomd; fi && \
   .venv-pdftomd/bin/pip install -q --upgrade pip && \
-  .venv-pdftomd/bin/pip install -q pdfminer.six pdfplumber pypdf pdf2image rapidocr_onnxruntime && \
+  .venv-pdftomd/bin/pip install -q pdfminer.six pdfplumber pypdf pdf2image rapidocr_onnxruntime pdf-inspector && \
   echo '  pdftomd venv ready'"
 
 # Step 4b: Verify pdftomd dependencies
 echo "  Verifying pdftomd dependencies..."
-ssh "${REMOTE}" "${REMOTE_DIR}/.venv-pdftomd/bin/python -c 'import pdfminer, pdfplumber, pypdf, pdf2image, rapidocr_onnxruntime; print(\"  All pdftomd dependencies OK\")'"
+ssh "${REMOTE}" "${REMOTE_DIR}/.venv-pdftomd/bin/python -c 'import pdfminer, pdfplumber, pypdf, pdf2image, rapidocr_onnxruntime, pdf_inspector; print(\"  All pdftomd dependencies OK\")'"
 
 # Step 5: Upload files
 echo "[5/8] Uploading files..."

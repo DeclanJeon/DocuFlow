@@ -685,7 +685,8 @@ export const PdfToMdTool = () => {
                 >
                   <p className="font-semibold">Server high-quality conversion</p>
                   <p className="text-sm mt-1">
-                    Uploads the PDF to the DocuFlow server for pdftomd extraction and optional OCR.
+                    Uploads the PDF to the DocuFlow server for layout-aware pdf-inspector
+                    extraction — text PDFs become Markdown without OCR.
                   </p>
                 </button>
               </div>
@@ -698,8 +699,9 @@ export const PdfToMdTool = () => {
             ) : (
               <div className="space-y-4">
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  Server mode uploads files to the configured DocuFlow API. OCR runs only when the
-                  selected server engine is available; no third-party provider is used by the browser.
+                  Server mode uploads files to the configured DocuFlow API. Text-based PDFs are
+                  extracted locally with pdf-inspector (no OCR). OCR runs only for scanned/weak
+                  pages when an engine is selected below.
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <label className="text-sm font-medium text-gray-700">
@@ -886,6 +888,28 @@ export const PdfToMdTool = () => {
                   <p>Confidence: {typeof activeDiagnostics.meanConfidence === "number" ? `${activeDiagnostics.meanConfidence.toFixed(1)}%` : "unknown"}</p>
                   <p>Low-confidence lines: {activeDiagnostics.lowConfidenceLineCount ?? "unknown"}</p>
                 </div>
+                {activeDiagnostics.extractor === "pdf-inspector" ? (
+                  <p className="mt-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800">
+                    ✓ pdf-inspector 레이아웃 인식 추출 — OCR 없이 마크다운(제목·표·목록 포함) 생성
+                    {activeDiagnostics.pdfType
+                      ? ` · PDF 유형: ${activeDiagnostics.pdfType}`
+                      : ""}
+                    {typeof activeDiagnostics.confidence === "number"
+                      ? ` · 추출 신뢰도: ${(activeDiagnostics.confidence * 100).toFixed(0)}%`
+                      : ""}
+                    {activeDiagnostics.pagesNeedingOcr?.length
+                      ? ` · OCR 필요 페이지: ${activeDiagnostics.pagesNeedingOcr.join(", ")}`
+                      : " · OCR 불필요"}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-gray-500">
+                    추출 엔진: {activeDiagnostics.extractor || "legacy (pypdf/pdfplumber)"}
+                    {typeof activeDiagnostics.legacyFallbackPages === "number" &&
+                    activeDiagnostics.legacyFallbackPages > 0
+                      ? ` · 레거시 폴백 페이지: ${activeDiagnostics.legacyFallbackPages}`
+                      : ""}
+                  </p>
+                )}
                 {activeDiagnostics.warnings?.length ? (
                   <ul className="mt-2 list-disc list-inside text-amber-700">
                     {activeDiagnostics.warnings.map((warning) => (

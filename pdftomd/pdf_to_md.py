@@ -94,6 +94,47 @@ def merge_page_candidates(primary: list[str], secondary: list[str]) -> list[str]
     return merged
 
 
+def extract_with_pdf_inspector(pdf_path: Path) -> tuple[list[str], dict[str, object]]:
+    """Layout-aware Markdown extraction via firecrawl/pdf-inspector (no OCR).
+
+    Returns per-page Markdown plus classification metadata. Raises when the
+    optional pdf_inspector dependency is unavailable so callers can fall back.
+    """
+    import pdf_inspector
+
+    detection = pdf_inspector.detect_pdf(str(pdf_path))
+    pages_result = pdf_inspector.extract_pages_markdown(str(pdf_path))
+    pages = [normalize_page_text(page.markdown or "") for page in pages_result.pages]
+    meta = {
+        "pdf_type": str(getattr(detection, "pdf_type", "unknown")),
+        "confidence": float(getattr(detection, "confidence", 0.0) or 0.0),
+        "pages_needing_ocr": [int(page) for page in (getattr(detection, "pages_needing_ocr", None) or [])],
+        "has_encoding_issues": bool(getattr(detection, "has_encoding_issues", False)),
+        "pages_with_tables": [int(page) for page in (getattr(detection, "pages_with_tables", None) or [])],
+        "is_complex_layout": bool(getattr(detection, "is_complex_layout", False)),
+    }
+    return pages, meta
+
+
+def extract_legacy_pages(pdf_path: Path) -> list[str]:
+    """pypdf + pdfplumber/page text extraction with per-page merging."""
+    emit_progress(15, "extract", "Extracting text with pypdf")
+    primary = extract_with_pypdf(pdf_path)
+    warn(f"diagnostics estimated_pages={len(primary)}")
+
+    emit_progress(40, "layout", "Refining layout with pdfplumber")
+    try:
+        secondary = extract_with_pdfplumber(pdf_path)
+    except Exception as error:
+        warn(f"warning pdfplumber failed: {error}")
+        try:
+            secondary = extract_with_pdfminer(pdf_path)
+        except Exception as miner_error:
+            warn(f"warning pdfminer failed: {miner_error}")
+            secondary = primary
+    return merge_page_candidates(primary, secondary)
+
+
 def page_to_markdown(page_text: str, page_number: int) -> str:
     if not page_text.strip():
         body = "_No extractable text on this page._"
@@ -222,6 +263,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--ocr-fallback", action="store_true")
     parser.add_argument("--ocr-engine", default="none")
     parser.add_argument("--split-every", type=int, default=0)
+    parser.add_argument(
+        "--extractor",
+        choices=["auto", "pdf-inspector", "legacy"],
+        default="auto",
+        help="Extraction engine: pdf-inspector (layout-aware Markdown, no OCR), legacy (pypdf/pdfplumber), or auto",
+    )
     return parser.parse_args(argv)
 
 
@@ -242,22 +289,46 @@ def main(argv: list[str] | None = None) -> int:
         emit_progress(1, "start", "Starting PDF text extraction")
         warn(f"diagnostics estimated_pages=unknown ocr_profile={args.ocr_profile}")
 
-        emit_progress(15, "extract", "Extracting text with pypdf")
-        primary = extract_with_pypdf(input_path)
-        warn(f"diagnostics estimated_pages={len(primary)}")
-
-        emit_progress(40, "layout", "Refining layout with pdfplumber")
-        try:
-            secondary = extract_with_pdfplumber(input_path)
-        except Exception as error:
-            warn(f"warning pdfplumber failed: {error}")
+        pages: list[str] | None = None
+        if args.extractor in {"auto", "pdf-inspector"}:
+            emit_progress(15, "extract", "Extracting layout-aware Markdown with pdf-inspector (no OCR)")
             try:
-                secondary = extract_with_pdfminer(input_path)
-            except Exception as miner_error:
-                warn(f"warning pdfminer failed: {miner_error}")
-                secondary = primary
+                pages, inspector_meta = extract_with_pdf_inspector(input_path)
+                warn(
+                    "diagnostics "
+                    f"engine=pdf_inspector pdf_type={inspector_meta['pdf_type']} "
+                    f"confidence={inspector_meta['confidence']} "
+                    f"pages_needing_ocr={inspector_meta['pages_needing_ocr']} "
+                    f"has_encoding_issues={str(inspector_meta['has_encoding_issues']).lower()} "
+                    f"pages_with_tables={inspector_meta['pages_with_tables']}"
+                )
+                warn(f"diagnostics estimated_pages={len(pages)}")
+            except Exception as error:
+                warn(f"warning pdf_inspector failed, falling back to legacy: {error}")
+                pages = None
 
-        pages = merge_page_candidates(primary, secondary)
+        if pages is None:
+            pages = extract_legacy_pages(input_path)
+        else:
+            # Fill pages pdf-inspector left empty from the legacy extractors so
+            # image-only pages can still be OCR'd downstream when requested.
+            empty_indexes = [index for index, text in enumerate(pages) if not (text or "").strip()]
+            if empty_indexes:
+                warn(f"diagnostics pdf_inspector_empty_pages={empty_indexes}")
+                try:
+                    legacy_pages = extract_legacy_pages(input_path)
+                    filled = 0
+                    for index in empty_indexes:
+                        if (
+                            index < len(legacy_pages)
+                            and (legacy_pages[index] or "").strip()
+                            and not (pages[index] or "").strip()
+                        ):
+                            pages[index] = legacy_pages[index]
+                            filled += 1
+                    warn(f"diagnostics pdf_inspector_pages_filled_from_legacy={filled}")
+                except Exception as error:
+                    warn(f"warning legacy fallback for empty pages failed: {error}")
 
         ocr_mode = None
         if args.ocr_fallback:
